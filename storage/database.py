@@ -168,7 +168,74 @@ def initialize_database() -> None:
             ON code_symbols(workspace_id, file_path)
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS code_imports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
 
+                workspace_id TEXT NOT NULL,
+
+                file_path TEXT NOT NULL,
+                file_sha256 TEXT NOT NULL,
+
+                language TEXT NOT NULL,
+
+                kind TEXT NOT NULL,
+
+                module TEXT NOT NULL,
+
+                imported_names TEXT NOT NULL DEFAULT '[]',
+
+                is_relative INTEGER NOT NULL DEFAULT 0,
+
+                resolved_file_path TEXT,
+
+                resolution_status TEXT NOT NULL,
+
+                start_line INTEGER NOT NULL,
+                end_line INTEGER NOT NULL,
+
+                raw_text TEXT,
+
+                FOREIGN KEY(workspace_id)
+                    REFERENCES workspaces(id)
+                    ON DELETE CASCADE
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_code_imports_workspace_file
+            ON code_imports(
+                workspace_id,
+                file_path
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_code_imports_workspace_module
+            ON code_imports(
+                workspace_id,
+                module
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_code_imports_resolved_file
+            ON code_imports(
+                workspace_id,
+                resolved_file_path
+            )
+            """
+        )
         connection.commit()
 
 

@@ -43,3 +43,54 @@ class ParseResult(BaseModel):
     symbol_kinds: Dict[str, int]
 
     parsed_at: str
+class CodeImport(BaseModel):
+    id: int
+
+    file_path: str
+    language: str
+
+    kind: str
+
+    module: str
+
+    imported_names: list[str]
+
+    is_relative: bool
+
+    resolved_file_path: str | None
+
+    resolution_status: str
+
+    start_line: int
+    end_line: int
+
+    raw_text: str | None
+
+
+class DependencyEdge(BaseModel):
+    from_file: str
+    to_file: str
+
+    kind: str
+    module: str
+
+
+class DependencyBuildResult(BaseModel):
+    workspace_id: str
+    workspace_name: str
+
+    source_files_seen: int
+    files_with_imports: int
+
+    total_imports: int
+
+    resolved_local_imports: int
+    unresolved_imports: int
+
+    skipped_unsupported: int
+    failed_files: int
+
+    languages: Dict[str, int]
+    import_kinds: Dict[str, int]
+
+    indexed_at: str
