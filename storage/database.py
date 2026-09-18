@@ -85,6 +85,90 @@ def initialize_database() -> None:
             """
         )
 
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS code_symbols (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                workspace_id TEXT NOT NULL,
+
+                file_path TEXT NOT NULL,
+                file_sha256 TEXT NOT NULL,
+
+                language TEXT NOT NULL,
+
+                kind TEXT NOT NULL,
+
+                name TEXT NOT NULL,
+                qualified_name TEXT NOT NULL,
+
+                parent_symbol TEXT,
+
+                start_line INTEGER NOT NULL,
+                end_line INTEGER NOT NULL,
+
+                start_column INTEGER NOT NULL,
+                end_column INTEGER NOT NULL,
+
+                signature TEXT,
+
+                FOREIGN KEY(workspace_id)
+                    REFERENCES workspaces(id)
+                    ON DELETE CASCADE
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS file_parse_status (
+                workspace_id TEXT NOT NULL,
+
+                file_path TEXT NOT NULL,
+                file_sha256 TEXT NOT NULL,
+
+                language TEXT NOT NULL,
+
+                parse_ok INTEGER NOT NULL,
+
+                error_count INTEGER NOT NULL DEFAULT 0,
+                error_message TEXT,
+
+                parsed_at TEXT NOT NULL,
+
+                PRIMARY KEY(workspace_id, file_path),
+
+                FOREIGN KEY(workspace_id)
+                    REFERENCES workspaces(id)
+                    ON DELETE CASCADE
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_code_symbols_workspace_name
+            ON code_symbols(workspace_id, name)
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_code_symbols_workspace_kind
+            ON code_symbols(workspace_id, kind)
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_code_symbols_workspace_file
+            ON code_symbols(workspace_id, file_path)
+            """
+        )
+
         connection.commit()
 
 

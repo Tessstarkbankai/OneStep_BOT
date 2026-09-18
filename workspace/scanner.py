@@ -64,8 +64,12 @@ LANGUAGE_BY_EXTENSION = {
     ".cjs": "javascript",
 
     ".ts": "typescript",
-    ".tsx": "typescript",
-    ".jsx": "javascript",
+    ".mts": "typescript",
+     ".cts": "typescript",
+
+     ".tsx": "tsx",
+
+     ".jsx": "javascript",
 
     ".java": "java",
 
@@ -145,6 +149,7 @@ SPECIAL_FILENAMES = {
 SOURCE_LANGUAGES = {
     "python",
     "javascript",
+    "tsx",
     "typescript",
     "java",
     "go",
