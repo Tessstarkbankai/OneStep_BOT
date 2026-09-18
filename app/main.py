@@ -1,10 +1,27 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
+
+from api.workspaces import router as workspaces_router
+from storage.database import initialize_database
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    initialize_database()
+
+    yield
+
 
 app = FastAPI(
     title="OutrightBot",
     description="Local company-aware coding agent",
     version="0.1.0",
+    lifespan=lifespan,
 )
+
+
+app.include_router(workspaces_router)
 
 
 @app.get("/")
