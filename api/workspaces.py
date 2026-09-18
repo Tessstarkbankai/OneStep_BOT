@@ -1,4 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+
+from workspace.scanner import (
+    list_repository_files,
+    scan_workspace,
+)
 
 from workspace.manager import (
     WorkspaceError,
@@ -44,7 +49,40 @@ def api_get_workspace(workspace_id: str):
         )
 
     return workspace
+@router.post("/{workspace_id}/scan")
+def api_scan_workspace(workspace_id: str):
+    try:
+        return scan_workspace(workspace_id)
 
+    except WorkspaceError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=str(error),
+        )
+
+
+@router.get("/{workspace_id}/files")
+def api_list_repository_files(
+    workspace_id: str,
+    source_only: bool = False,
+    limit: int = Query(
+        default=500,
+        ge=1,
+        le=5000,
+    ),
+):
+    try:
+        return list_repository_files(
+            workspace_id=workspace_id,
+            source_only=source_only,
+            limit=limit,
+        )
+
+    except WorkspaceError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=str(error),
+        )
 
 @router.delete("/{workspace_id}")
 def api_delete_workspace(workspace_id: str):
