@@ -707,7 +707,167 @@ def _extract_binding(
         )
 
     return None
+PHP_BUILTIN_TYPES = {
+    "int",
+    "float",
+    "string",
+    "bool",
+    "array",
+    "object",
+    "callable",
+    "iterable",
+    "mixed",
+    "void",
+    "never",
+    "null",
+    "false",
+    "true",
+    "self",
+    "static",
+    "parent",
+}
 
+
+def _extract_php_typed_parameters(
+    node: Node,
+    source: bytes,
+):
+
+    if node.type not in {
+        "method_declaration",
+        "function_definition",
+    }:
+        return []
+
+    parameters = (
+        node.child_by_field_name(
+            "parameters"
+        )
+    )
+
+    if parameters is None:
+        return []
+
+    raw = _node_text(
+        parameters,
+        source,
+    )
+
+    pattern = re.compile(
+        r"""
+        (?:
+            (?P<visibility>
+                public|
+                protected|
+                private
+            )
+            \s+
+        )?
+
+        (?:
+            readonly
+            \s+
+        )?
+
+        \??
+
+        (?P<type>
+            \\?
+            [A-Za-z_]\w*
+            (?:
+                \\[A-Za-z_]\w*
+            )*
+        )
+
+        \s+
+
+        (?P<variable>
+            \$[A-Za-z_]\w*
+        )
+        """,
+        re.VERBOSE,
+    )
+
+    results = []
+
+    for match in pattern.finditer(
+        raw
+    ):
+
+        type_name = (
+            match.group("type")
+            .lstrip("\\")
+        )
+
+        basename = (
+            _class_basename(
+                type_name
+            )
+        )
+
+        if basename.lower() in (
+            PHP_BUILTIN_TYPES
+        ):
+            continue
+
+        results.append(
+            {
+                "variable": (
+                    match.group(
+                        "variable"
+                    )
+                ),
+
+                "class_name": basename,
+
+                "promoted": bool(
+                    match.group(
+                        "visibility"
+                    )
+                ),
+            }
+        )
+
+    return results
+
+def _extract_php_property_assignment(
+    node: Node,
+    source: bytes,
+):
+
+    if node.type != "assignment_expression":
+        return None
+
+    raw = _node_text(
+        node,
+        source,
+    )
+
+    match = re.match(
+        r"""
+        \s*
+        (?P<property>
+            \$this->
+            [A-Za-z_]\w*
+        )
+        \s*=\s*
+        (?P<variable>
+            \$[A-Za-z_]\w*
+        )
+        \s*
+        $
+        """,
+        raw,
+        re.VERBOSE,
+    )
+
+    if not match:
+        return None
+
+    return (
+        match.group("property"),
+        match.group("variable"),
+    )
 
 def _collect_file_calls(
     root_node: Node,
@@ -756,6 +916,71 @@ def _collect_file_calls(
             next_class = (
                 definition_class
             )
+
+        #
+        # PHP constructor/function
+        # parameter type bindings.
+        #
+        if language == "php":
+
+            typed_parameters = (
+                _extract_php_typed_parameters(
+                    node,
+                    source,
+                )
+            )
+
+            for parameter in (
+                typed_parameters
+            ):
+
+                variable = parameter[
+                    "variable"
+                ]
+
+                class_name = parameter[
+                    "class_name"
+                ]
+
+                if next_caller:
+
+                    bindings_by_scope[
+                        next_caller
+                    ][variable] = (
+                        class_name
+                    )
+
+                #
+                # PHP promoted property:
+                #
+                # __construct(
+                #   private Foo $foo
+                # )
+                #
+                if (
+                    parameter[
+                        "promoted"
+                    ]
+                    and next_class
+                ):
+
+                    property_name = (
+                        "$this->"
+                        + variable.lstrip(
+                            "$"
+                        )
+                    )
+
+                    class_scope = (
+                        f"__class__:"
+                        f"{next_class}"
+                    )
+
+                    bindings_by_scope[
+                        class_scope
+                    ][property_name] = (
+                        class_name
+                    )
 
         binding = _extract_binding(
             node,
@@ -815,6 +1040,61 @@ def _collect_file_calls(
                 ][variable_name] = (
                     class_name
                 )
+
+        #
+        # PHP:
+        #
+        # $this->service = $service
+        #
+        # where $service's class came
+        # from constructor type hints.
+        #
+        if (
+            language == "php"
+            and next_class
+        ):
+
+            property_assignment = (
+                _extract_php_property_assignment(
+                    node,
+                    source,
+                )
+            )
+
+            if property_assignment:
+
+                (
+                    property_name,
+                    source_variable,
+                ) = property_assignment
+
+                source_type = None
+
+                if next_caller:
+
+                    source_type = (
+                        bindings_by_scope
+                        .get(
+                            next_caller,
+                            {},
+                        )
+                        .get(
+                            source_variable
+                        )
+                    )
+
+                if source_type:
+
+                    class_scope = (
+                        f"__class__:"
+                        f"{next_class}"
+                    )
+
+                    bindings_by_scope[
+                        class_scope
+                    ][property_name] = (
+                        source_type
+                    )
 
         call = _extract_call(
             node,
@@ -884,7 +1164,6 @@ def _collect_file_calls(
         calls,
         bindings_by_scope,
     )
-
 
 def _candidate_files(
     file_path: str,

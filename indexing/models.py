@@ -2,7 +2,53 @@ from typing import Dict
 
 from pydantic import BaseModel
 
+class CodeRelation(BaseModel):
+    id: int
 
+    file_path: str
+    language: str
+
+    source_symbol: str
+    source_kind: str
+
+    relation_type: str
+
+    target_text: str
+
+    resolved_file_path: str | None
+    resolved_symbol: str | None
+    resolved_symbol_kind: str | None
+
+    resolution_status: str
+    resolution_method: str | None
+    confidence: str | None
+
+    start_line: int
+
+
+class RelationBuildResult(BaseModel):
+    workspace_id: str
+    workspace_name: str
+
+    source_files_seen: int
+    parsed_files: int
+
+    total_relations: int
+
+    resolved_relations: int
+    unresolved_relations: int
+    ambiguous_relations: int
+
+    extends_relations: int
+    implements_relations: int
+    trait_relations: int
+
+    failed_files: int
+
+    languages: Dict[str, int]
+    relation_types: Dict[str, int]
+
+    indexed_at: str
 class CodeCall(BaseModel):
     id: int
 

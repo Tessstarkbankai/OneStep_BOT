@@ -316,6 +316,76 @@ def initialize_database() -> None:
             )
             """
         )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS code_relations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                workspace_id TEXT NOT NULL,
+
+                file_path TEXT NOT NULL,
+                file_sha256 TEXT NOT NULL,
+
+                language TEXT NOT NULL,
+
+                source_symbol TEXT NOT NULL,
+                source_kind TEXT NOT NULL,
+
+                relation_type TEXT NOT NULL,
+
+                target_text TEXT NOT NULL,
+
+                resolved_file_path TEXT,
+                resolved_symbol TEXT,
+                resolved_symbol_kind TEXT,
+
+                resolution_status TEXT NOT NULL,
+                resolution_method TEXT,
+                confidence TEXT,
+
+                start_line INTEGER NOT NULL,
+
+                FOREIGN KEY(workspace_id)
+                    REFERENCES workspaces(id)
+                    ON DELETE CASCADE
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_code_relations_source
+            ON code_relations(
+                workspace_id,
+                source_symbol
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_code_relations_target
+            ON code_relations(
+                workspace_id,
+                resolved_symbol
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_code_relations_type
+            ON code_relations(
+                workspace_id,
+                relation_type
+            )
+            """
+        )
+
         connection.commit()
 
 
