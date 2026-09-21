@@ -11,7 +11,9 @@ from api.relations import router as relations_router
 from api.repository import (
     router as repository_router,
 )
-
+from api.retrieval import (
+    router as retrieval_router,
+)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     initialize_database()
@@ -34,6 +36,9 @@ app.include_router(calls_router)
 app.include_router(relations_router)
 app.include_router(
     repository_router
+)
+app.include_router(
+    retrieval_router
 )
 @app.get("/")
 def root():
