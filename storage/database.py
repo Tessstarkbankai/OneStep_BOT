@@ -439,6 +439,88 @@ def initialize_database() -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS code_chunks (
+                chunk_id TEXT PRIMARY KEY,
+
+                workspace_id TEXT NOT NULL,
+
+                file_path TEXT NOT NULL,
+                file_sha256 TEXT NOT NULL,
+
+                language TEXT NOT NULL,
+
+                symbol_name TEXT,
+                symbol_kind TEXT,
+
+                start_line INTEGER NOT NULL,
+                end_line INTEGER NOT NULL,
+
+                content_hash TEXT NOT NULL,
+
+                content TEXT NOT NULL,
+
+                created_at TEXT NOT NULL,
+
+                FOREIGN KEY(workspace_id)
+                    REFERENCES workspaces(id)
+                    ON DELETE CASCADE
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_code_chunks_workspace
+            ON code_chunks(
+                workspace_id
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_code_chunks_file
+            ON code_chunks(
+                workspace_id,
+                file_path
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_code_chunks_symbol
+            ON code_chunks(
+                workspace_id,
+                symbol_name
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS
+            semantic_index_status (
+                workspace_id TEXT PRIMARY KEY,
+
+                model_name TEXT NOT NULL,
+
+                chunks INTEGER NOT NULL,
+                vector_dimension INTEGER NOT NULL,
+
+                indexed_at TEXT NOT NULL,
+
+                FOREIGN KEY(workspace_id)
+                    REFERENCES workspaces(id)
+                    ON DELETE CASCADE
+            )
+            """
+        )
         connection.commit()
 
 

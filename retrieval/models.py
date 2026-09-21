@@ -1,6 +1,65 @@
 from pydantic import BaseModel, Field
 
+class SemanticBuildResult(BaseModel):
+    workspace_id: str
+    workspace_name: str
 
+    model_name: str
+
+    chunks: int
+
+    vector_dimension: int
+
+    indexed_at: str
+
+
+class SemanticSearchRequest(
+    BaseModel
+):
+    query: str = Field(
+        min_length=1,
+        max_length=2000,
+    )
+
+    limit: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+    )
+
+
+class SemanticSearchHit(
+    BaseModel
+):
+    chunk_id: str
+
+    file_path: str
+    language: str
+
+    symbol_name: str | None
+    symbol_kind: str | None
+
+    start_line: int
+    end_line: int
+
+    similarity: float
+
+    preview: str
+
+
+class SemanticSearchResult(
+    BaseModel
+):
+    workspace_id: str
+    workspace_name: str
+
+    query: str
+
+    model_name: str
+
+    results: list[
+        SemanticSearchHit
+    ]
 class RetrievalRequest(BaseModel):
     query: str = Field(
         min_length=1,
