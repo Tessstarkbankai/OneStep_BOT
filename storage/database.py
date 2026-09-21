@@ -386,6 +386,59 @@ def initialize_database() -> None:
             """
         )
 
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS workspace_index_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                workspace_id TEXT NOT NULL,
+
+                status TEXT NOT NULL,
+
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+
+                error_message TEXT,
+
+                scan_files INTEGER NOT NULL DEFAULT 0,
+                symbols INTEGER NOT NULL DEFAULT 0,
+                imports INTEGER NOT NULL DEFAULT 0,
+                relations INTEGER NOT NULL DEFAULT 0,
+                calls INTEGER NOT NULL DEFAULT 0,
+
+                FOREIGN KEY(workspace_id)
+                    REFERENCES workspaces(id)
+                    ON DELETE CASCADE
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_workspace_index_runs_workspace
+            ON workspace_index_runs(
+                workspace_id,
+                started_at
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS repository_maps (
+                workspace_id TEXT PRIMARY KEY,
+
+                generated_at TEXT NOT NULL,
+
+                map_json TEXT NOT NULL,
+
+                FOREIGN KEY(workspace_id)
+                    REFERENCES workspaces(id)
+                    ON DELETE CASCADE
+            )
+            """
+        )
         connection.commit()
 
 

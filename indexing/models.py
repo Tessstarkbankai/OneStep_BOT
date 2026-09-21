@@ -2,6 +2,114 @@ from typing import Dict
 
 from pydantic import BaseModel
 
+class DirectorySummary(BaseModel):
+    path: str
+
+    source_files: int
+    symbols: int
+
+
+class ImportantFileSummary(BaseModel):
+    path: str
+    language: str
+
+    symbols: int
+
+    incoming_dependencies: int
+    outgoing_dependencies: int
+
+    incoming_calls: int
+    outgoing_calls: int
+
+    importance_score: int
+
+
+class KeySymbolSummary(BaseModel):
+    name: str
+    qualified_name: str
+
+    kind: str
+    file_path: str
+
+    incoming_calls: int
+    incoming_relations: int
+
+    importance_score: int
+
+
+class RepositoryMap(BaseModel):
+    workspace_id: str
+    workspace_name: str
+
+    generated_at: str
+
+    total_files: int
+    source_files: int
+
+    languages: Dict[str, int]
+
+    symbols: int
+
+    imports: int
+    resolved_local_imports: int
+
+    calls: int
+    resolved_calls: int
+
+    relations: int
+    resolved_relations: int
+
+    entry_points: list[str]
+
+    directories: list[
+        DirectorySummary
+    ]
+
+    important_files: list[
+        ImportantFileSummary
+    ]
+
+    key_symbols: list[
+        KeySymbolSummary
+    ]
+
+
+class UnifiedIndexResult(BaseModel):
+    workspace_id: str
+    workspace_name: str
+
+    status: str
+
+    started_at: str
+    completed_at: str
+
+    indexed_files: int
+    symbols: int
+    imports: int
+    relations: int
+    calls: int
+
+    repository_map: RepositoryMap
+
+
+class IndexRunStatus(BaseModel):
+    id: int
+
+    workspace_id: str
+
+    status: str
+
+    started_at: str
+    completed_at: str | None
+
+    error_message: str | None
+
+    scan_files: int
+    symbols: int
+    imports: int
+    relations: int
+    calls: int
+
 class CodeRelation(BaseModel):
     id: int
 
