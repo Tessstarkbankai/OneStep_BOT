@@ -25,7 +25,9 @@ from workspace.manager import (
     WorkspaceError,
     get_workspace,
 )
-
+from retrieval.semantic import (
+    semantic_search,
+)
 
 def _add_reason(
     candidate: dict,
@@ -60,6 +62,10 @@ def _make_candidate(
 
             "score": 0.0,
 
+            "semantic_similarity": None,
+            "semantic_symbol_name": None,
+            "semantic_start_line": None,
+            "semantic_end_line": None,      
             "reasons": [],
 
             "symbols": [],
@@ -496,12 +502,31 @@ def _expand_graph(
                 ),
             )
 
+def _semantic_index_ready(
+    workspace_id: str,
+) -> bool:
+
+    with get_database() as database:
+
+        row = database.execute(
+            """
+            SELECT workspace_id
+
+            FROM semantic_index_status
+
+            WHERE workspace_id = ?
+            """,
+            (workspace_id,),
+        ).fetchone()
+
+    return row is not None
 
 def hybrid_retrieve(
     workspace_id: str,
     query: str,
     limit: int = 10,
     expand_graph: bool = True,
+    use_semantic: bool = True,
 ) -> HybridRetrievalResult:
 
     workspace = get_workspace(
@@ -785,10 +810,194 @@ def hybrid_retrieve(
                 )
             ),
         )
-
     #
     # ------------------------------------------------
-    # 4. REPOSITORY IMPORTANCE
+    # 4. SEMANTIC SEARCH
+    # ------------------------------------------------
+    #
+    semantic_used = False
+    semantic_note = None
+
+    if use_semantic:
+
+        if not _semantic_index_ready(
+            workspace_id
+        ):
+
+            semantic_note = (
+                "Semantic index is not "
+                "available for this workspace."
+            )
+
+        else:
+
+            try:
+
+                semantic_result = (
+                    semantic_search(
+                        workspace_id=(
+                            workspace_id
+                        ),
+
+                        query=query,
+
+                        limit=max(
+                            12,
+                            limit * 3,
+                        ),
+                    )
+                )
+
+                semantic_used = True
+
+                #
+                # Multiple chunks from the
+                # same file may appear.
+                #
+                # Use the strongest chunk
+                # for file-level scoring.
+                #
+                best_semantic_by_file = {}
+
+                for hit in (
+                    semantic_result.results
+                ):
+
+                    #
+                    # Very weak vector matches
+                    # add more noise than value.
+                    #
+                    if hit.similarity < 0.25:
+                        continue
+
+                    existing = (
+                        best_semantic_by_file
+                        .get(
+                            hit.file_path
+                        )
+                    )
+
+                    if (
+                        existing is None
+                        or hit.similarity
+                        > existing.similarity
+                    ):
+
+                        best_semantic_by_file[
+                            hit.file_path
+                        ] = hit
+
+                for (
+                    file_path,
+                    hit,
+                ) in (
+                    best_semantic_by_file
+                    .items()
+                ):
+
+                    candidate = (
+                        _make_candidate(
+                            candidates,
+
+                            file_path,
+
+                            languages_by_file
+                            .get(
+                                file_path,
+                                hit.language,
+                            ),
+                        )
+                    )
+
+                    similarity = float(
+                        hit.similarity
+                    )
+
+                    candidate[
+                        "semantic_similarity"
+                    ] = round(
+                        similarity,
+                        4,
+                    )
+
+                    candidate[
+                        "semantic_symbol_name"
+                    ] = hit.symbol_name
+
+                    candidate[
+                        "semantic_start_line"
+                    ] = hit.start_line
+
+                    candidate[
+                        "semantic_end_line"
+                    ] = hit.end_line
+
+                    #
+                    # Semantic similarity
+                    # should help discovery,
+                    # but should NOT overpower
+                    # exact symbol evidence.
+                    #
+                    semantic_bonus = max(
+                        0.0,
+
+                        min(
+                            40.0,
+
+                            (
+                                similarity
+                                - 0.20
+                            )
+                            * 100.0,
+                        ),
+                    )
+
+                    candidate[
+                        "score"
+                    ] += semantic_bonus
+
+                    if hit.symbol_name:
+
+                        semantic_label = (
+                            hit.symbol_name
+                        )
+
+                    else:
+
+                        semantic_label = (
+                            f"{file_path}:"
+                            f"{hit.start_line}-"
+                            f"{hit.end_line}"
+                        )
+
+                    _add_reason(
+                        candidate,
+
+                        (
+                            "semantic match: "
+                            f"{semantic_label} "
+                            f"({similarity:.3f}, "
+                            f"+{semantic_bonus:.1f})"
+                        ),
+                    )
+
+            except Exception as error:
+
+                #
+                # Semantic retrieval is an
+                # enhancement.
+                #
+                # A vector/model problem should
+                # not destroy deterministic
+                # repository search.
+                #
+                semantic_note = (
+                    "Semantic search skipped: "
+                    + str(error)[:500]
+                )
+    #
+    # ------------------------------------------------
+    # 5. REPOSITORY IMPORTANCE
     # ------------------------------------------------
     #
     importance = (
@@ -855,7 +1064,7 @@ def hybrid_retrieve(
 
     #
     # ------------------------------------------------
-    # 5. GRAPH EXPANSION
+    # 6. GRAPH EXPANSION
     # ------------------------------------------------
     #
     if expand_graph:
@@ -983,6 +1192,29 @@ def hybrid_retrieve(
                     ],
                     2,
                 ),
+                semantic_similarity=(
+                    item[
+                        "semantic_similarity"
+                    ]
+                ),
+                semantic_symbol_name=(
+                    item[
+                        "semantic_symbol_name"
+                    ]
+                ),
+
+                semantic_start_line=(
+                    item[
+                        "semantic_start_line"
+                    ]
+                ),
+
+                semantic_end_line=(
+                    item[
+                        "semantic_end_line"
+                    ]
+                ),
+
 
                 reasons=item[
                     "reasons"
@@ -1006,6 +1238,13 @@ def hybrid_retrieve(
         query=query,
 
         search_terms=terms,
+        semantic_used=(
+            semantic_used
+        ),
+
+        semantic_note=(
+            semantic_note
+        ),        
 
         total_candidates=len(
             candidates

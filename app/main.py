@@ -17,6 +17,15 @@ from api.retrieval import (
 from api.semantic import (
     router as semantic_router,
 )
+from api.ask import (
+    router as ask_router,
+)
+from api.agent import (
+    router as agent_router,
+)
+from api.assistant import (
+    router as assistant_router,
+)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     initialize_database()
@@ -46,6 +55,16 @@ app.include_router(
 app.include_router(
     semantic_router
 )
+app.include_router(
+    ask_router
+)
+app.include_router(
+    agent_router
+)
+app.include_router(
+    assistant_router
+)
+
 @app.get("/")
 def root():
     return {

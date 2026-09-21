@@ -73,7 +73,7 @@ class RetrievalRequest(BaseModel):
     )
 
     expand_graph: bool = True
-
+    use_semantic: bool = True
 
 class LexicalMatch(BaseModel):
     line: int
@@ -100,6 +100,22 @@ class RetrievalCandidate(BaseModel):
     language: str
 
     score: float
+    semantic_similarity: (
+        float | None
+    ) = None
+
+    semantic_symbol_name: (
+        str | None
+    ) = None
+
+    semantic_start_line: (
+        int | None
+    ) = None
+
+    semantic_end_line: (
+        int | None
+    ) = None
+
 
     reasons: list[str]
 
@@ -117,7 +133,9 @@ class HybridRetrievalResult(BaseModel):
     query: str
 
     search_terms: list[str]
+    semantic_used: bool = False
 
+    semantic_note: str | None = None
     total_candidates: int
 
     results: list[

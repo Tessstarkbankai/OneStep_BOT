@@ -46,8 +46,11 @@ def api_hybrid_search(
             expand_graph=(
                 request.expand_graph
             ),
-        )
 
+            use_semantic=(
+                request.use_semantic
+            ),
+        )
     except WorkspaceError as error:
 
         raise HTTPException(
