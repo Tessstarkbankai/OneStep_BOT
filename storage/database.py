@@ -236,6 +236,86 @@ def initialize_database() -> None:
             )
             """
         )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS code_calls (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                workspace_id TEXT NOT NULL,
+
+                file_path TEXT NOT NULL,
+                file_sha256 TEXT NOT NULL,
+
+                language TEXT NOT NULL,
+
+                caller_symbol TEXT,
+                caller_class TEXT,
+
+                callee_text TEXT NOT NULL,
+                call_kind TEXT NOT NULL,
+
+                resolved_file_path TEXT,
+                resolved_symbol TEXT,
+                resolved_symbol_kind TEXT,
+
+                resolution_status TEXT NOT NULL,
+                resolution_method TEXT,
+                confidence TEXT,
+
+                start_line INTEGER NOT NULL,
+                end_line INTEGER NOT NULL,
+
+                FOREIGN KEY(workspace_id)
+                    REFERENCES workspaces(id)
+                    ON DELETE CASCADE
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_code_calls_workspace_file
+            ON code_calls(
+                workspace_id,
+                file_path
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_code_calls_caller
+            ON code_calls(
+                workspace_id,
+                caller_symbol
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_code_calls_resolved_symbol
+            ON code_calls(
+                workspace_id,
+                resolved_symbol
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_code_calls_resolved_file
+            ON code_calls(
+                workspace_id,
+                resolved_file_path
+            )
+            """
+        )
         connection.commit()
 
 

@@ -31,7 +31,9 @@ JS_LANGUAGES = {
     "typescript",
     "tsx",
 }
-
+PHP_LANGUAGES = {
+    "php",
+}
 
 JS_EXTENSIONS = {
     "javascript": [
@@ -66,7 +68,180 @@ JS_EXTENSIONS = {
     ],
 }
 
+def _load_php_psr4(
+    root_path: Path,
+) -> list[tuple[str, Path]]:
 
+    composer_path = (
+        root_path / "composer.json"
+    )
+
+    if not composer_path.exists():
+        return []
+
+    try:
+        data = json.loads(
+            composer_path.read_text(
+                encoding="utf-8"
+            )
+        )
+
+    except (
+        OSError,
+        json.JSONDecodeError,
+    ):
+        return []
+
+    mappings = []
+
+    for section_name in (
+        "autoload",
+        "autoload-dev",
+    ):
+        section = data.get(
+            section_name,
+            {}
+        )
+
+        psr4 = section.get(
+            "psr-4",
+            {}
+        )
+
+        for prefix, directories in (
+            psr4.items()
+        ):
+
+            if isinstance(
+                directories,
+                str,
+            ):
+                directories = [
+                    directories
+                ]
+
+            for directory in directories:
+
+                mappings.append(
+                    (
+                        prefix,
+                        (
+                            root_path
+                            / directory
+                        ),
+                    )
+                )
+
+    #
+    # Longest namespace prefixes
+    # should be checked first.
+    #
+    mappings.sort(
+        key=lambda item: len(
+            item[0]
+        ),
+        reverse=True,
+    )
+
+    return mappings
+
+def _resolve_php_module(
+    module: str,
+    file_path: str,
+    root_path: Path,
+    known_paths: set[str],
+    psr4_mappings: list[
+        tuple[str, Path]
+    ],
+    kind: str,
+) -> str | None:
+
+    #
+    # require/include
+    #
+    if kind in {
+        "require",
+        "require_once",
+        "include",
+        "include_once",
+    }:
+
+        importer = (
+            root_path / file_path
+        )
+
+        candidate = (
+            importer.parent / module
+        )
+
+        resolved = _path_if_known(
+            candidate,
+            root_path,
+            known_paths,
+        )
+
+        if resolved:
+            return resolved
+
+        return None
+
+    #
+    # Composer PSR-4 namespace.
+    #
+    if kind != "use":
+        return None
+
+    normalized_module = (
+        module.lstrip("\\")
+    )
+
+    for prefix, directory in (
+        psr4_mappings
+    ):
+
+        normalized_prefix = (
+            prefix.lstrip("\\")
+        )
+
+        if not normalized_module.startswith(
+            normalized_prefix
+        ):
+            continue
+
+        relative_class = (
+            normalized_module[
+                len(
+                    normalized_prefix
+                ):
+            ]
+        )
+
+        relative_class = (
+            relative_class.lstrip("\\")
+        )
+
+        relative_path = (
+            relative_class.replace(
+                "\\",
+                "/",
+            )
+            + ".php"
+        )
+
+        candidate = (
+            directory / relative_path
+        )
+
+        resolved = _path_if_known(
+            candidate,
+            root_path,
+            known_paths,
+        )
+
+        if resolved:
+            return resolved
+
+    return None
 def _node_text(
     node: Node,
     source: bytes,
@@ -757,8 +932,11 @@ def _resolve_import(
     file_path: str,
     root_path: Path,
     known_paths: set[str],
+    kind: str,
+    php_psr4_mappings: list[
+        tuple[str, Path]
+    ],
 ) -> str | None:
-
     if language == "python":
         return (
             _resolve_python_module(
@@ -782,9 +960,187 @@ def _resolve_import(
                 known_paths=known_paths,
             )
         )
+    if language == "php":
+        return _resolve_php_module(
+            module=module,
+            file_path=file_path,
+            root_path=root_path,
+            known_paths=known_paths,
+            psr4_mappings=(
+                php_psr4_mappings
+            ),
+            kind=kind,
+        )
 
     return None
+def _extract_php_imports(
+    root_node: Node,
+    source: bytes,
+) -> list[dict]:
 
+    imports = []
+
+    for node in _walk_tree(root_node):
+
+        start_row, _ = node.start_point
+        end_row, _ = node.end_point
+
+        #
+        # PHP namespace imports:
+        #
+        # use App\Services\UserService;
+        #
+        if node.type == "namespace_use_declaration":
+
+            raw_text = _node_text(
+                node,
+                source,
+            )
+
+            normalized = (
+                _normalize_whitespace(
+                    raw_text
+                )
+            )
+
+            match = re.match(
+                r"^use\s+(.+?);?$",
+                normalized,
+            )
+
+            if not match:
+                continue
+
+            payload = match.group(1)
+
+            #
+            # Avoid incorrectly treating
+            # "use function" / "use const"
+            # as normal class PSR-4 imports.
+            #
+            if payload.startswith("function "):
+                kind = "use_function"
+                payload = payload[
+                    len("function "):
+                ].strip()
+
+            elif payload.startswith("const "):
+                kind = "use_const"
+                payload = payload[
+                    len("const "):
+                ].strip()
+
+            else:
+                kind = "use"
+
+            #
+            # Basic comma-separated imports.
+            #
+            # Grouped namespace imports will
+            # be improved later.
+            #
+            for item in payload.split(","):
+
+                item = item.strip()
+
+                if not item:
+                    continue
+
+                module = item.split(
+                    " as ",
+                    1,
+                )[0].strip()
+
+                if not module:
+                    continue
+
+                imports.append(
+                    {
+                        "kind": kind,
+
+                        "module": module,
+
+                        "imported_names": [],
+
+                        "is_relative": False,
+
+                        "start_line": (
+                            start_row + 1
+                        ),
+
+                        "end_line": (
+                            end_row + 1
+                        ),
+
+                        "raw_text": raw_text,
+                    }
+                )
+
+            continue
+
+        #
+        # PHP include / require:
+        #
+        if node.type not in {
+            "include_expression",
+            "include_once_expression",
+            "require_expression",
+            "require_once_expression",
+        }:
+            continue
+
+        raw_text = _node_text(
+            node,
+            source,
+        )
+
+        #
+        # Extract only static quoted paths
+        # at this stage.
+        #
+        # Dynamic expressions remain unresolved.
+        #
+        module = (
+            _extract_quoted_module(
+                raw_text
+            )
+        )
+
+        if not module:
+            continue
+
+        kind_map = {
+            "include_expression": "include",
+            "include_once_expression": "include_once",
+            "require_expression": "require",
+            "require_once_expression": "require_once",
+        }
+
+        imports.append(
+            {
+                "kind": kind_map[
+                    node.type
+                ],
+
+                "module": module,
+
+                "imported_names": [],
+
+                "is_relative": True,
+
+                "start_line": (
+                    start_row + 1
+                ),
+
+                "end_line": (
+                    end_row + 1
+                ),
+
+                "raw_text": raw_text,
+            }
+        )
+
+    return imports
 
 def build_dependency_index(
     workspace_id: str,
@@ -840,6 +1196,11 @@ def build_dependency_index(
         row["path"]
         for row in all_path_rows
     }
+    php_psr4_mappings = (
+        _load_php_psr4(
+            root_path
+        )
+    )
 
     indexed_at = datetime.now(
         timezone.utc
@@ -887,6 +1248,7 @@ def build_dependency_index(
             )
 
             if language == "python":
+
                 discovered = (
                     _extract_python_imports(
                         tree.root_node,
@@ -895,8 +1257,18 @@ def build_dependency_index(
                 )
 
             elif language in JS_LANGUAGES:
+
                 discovered = (
                     _extract_js_imports(
+                        tree.root_node,
+                        source,
+                    )
+                )
+
+            elif language == "php":
+
+                discovered = (
+                    _extract_php_imports(
                         tree.root_node,
                         source,
                     )
@@ -917,14 +1289,18 @@ def build_dependency_index(
                         module=record[
                             "module"
                         ],
-                        imported_names=(
-                            record[
-                                "imported_names"
-                            ]
-                        ),
+                        imported_names=record[
+                            "imported_names"
+                        ],
                         file_path=file_path,
                         root_path=root_path,
                         known_paths=known_paths,
+                        kind=record[
+                            "kind"
+                        ],
+                        php_psr4_mappings=(
+                            php_psr4_mappings
+                        ),
                     )
                 )
 

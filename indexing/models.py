@@ -3,6 +3,53 @@ from typing import Dict
 from pydantic import BaseModel
 
 
+class CodeCall(BaseModel):
+    id: int
+
+    file_path: str
+    language: str
+
+    caller_symbol: str | None
+    caller_class: str | None
+
+    callee_text: str
+    call_kind: str
+
+    resolved_file_path: str | None
+    resolved_symbol: str | None
+    resolved_symbol_kind: str | None
+
+    resolution_status: str
+    resolution_method: str | None
+    confidence: str | None
+
+    start_line: int
+    end_line: int
+
+
+class CallGraphBuildResult(BaseModel):
+    workspace_id: str
+    workspace_name: str
+
+    source_files_seen: int
+    parsed_files: int
+
+    total_calls: int
+    resolved_calls: int
+    unresolved_calls: int
+    ambiguous_calls: int
+
+    constructor_calls: int
+    method_calls: int
+    function_calls: int
+
+    skipped_unsupported: int
+    failed_files: int
+
+    languages: Dict[str, int]
+
+    indexed_at: str
+
 class CodeSymbol(BaseModel):
     id: int
 

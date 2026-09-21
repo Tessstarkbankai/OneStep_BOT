@@ -6,6 +6,7 @@ from api.workspaces import router as workspaces_router
 from storage.database import initialize_database
 from api.indexing import router as indexing_router
 from api.dependencies import router as dependencies_router
+from api.calls import router as calls_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -25,6 +26,8 @@ app = FastAPI(
 app.include_router(workspaces_router)
 app.include_router(indexing_router)
 app.include_router(dependencies_router)
+app.include_router(calls_router)
+
 @app.get("/")
 def root():
     return {

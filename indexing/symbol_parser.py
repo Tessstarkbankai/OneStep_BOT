@@ -177,7 +177,27 @@ def _classify_symbol(
                 in FUNCTION_VALUE_TYPES
             ):
                 return "function", node_type
+    if language == "php":
 
+        if node_type == "class_declaration":
+            return "class", node_type
+
+        if node_type == "interface_declaration":
+            return "interface", node_type
+
+        if node_type == "trait_declaration":
+            return "trait", node_type
+
+        if node_type == "enum_declaration":
+            return "enum", node_type
+
+        if node_type == "function_definition":
+            return "function", node_type
+
+        if node_type == "method_declaration":
+            return "method", node_type
+
+        return None
     return None
 
 

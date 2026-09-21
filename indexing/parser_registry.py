@@ -5,10 +5,11 @@ from tree_sitter import Language, Parser
 import tree_sitter_javascript as tsjavascript
 import tree_sitter_python as tspython
 import tree_sitter_typescript as tstypescript
-
+import tree_sitter_php as tsphp
 
 SUPPORTED_LANGUAGES = {
     "python",
+    "php",
     "javascript",
     "typescript",
     "tsx",
@@ -20,6 +21,10 @@ def get_language(language_name: str) -> Language:
     if language_name == "python":
         return Language(
             tspython.language()
+        )
+    if language_name == "php":
+        return Language(
+            tsphp.language_php()
         )
 
     if language_name == "javascript":
