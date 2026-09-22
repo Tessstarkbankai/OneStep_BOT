@@ -618,7 +618,7 @@ def initialize_database() -> None:
                 ADD COLUMN cleanup_at TEXT
                 """
             )
-            
+
         connection.execute(
             """
             CREATE INDEX IF NOT EXISTS
@@ -629,6 +629,56 @@ def initialize_database() -> None:
             )
             """
         )
+        index_state_table_exists = (
+            connection.execute(
+                """
+                SELECT name
+                FROM sqlite_master
+                WHERE
+                    type = 'table'
+                    AND name = 'workspace_index_state'
+                """
+            ).fetchone()
+            is not None
+        )
+
+
+        if index_state_table_exists:
+
+            index_state_foreign_keys = (
+                connection.execute(
+                    """
+                    PRAGMA foreign_key_list(
+                        workspace_index_state
+                    )
+                    """
+                ).fetchall()
+            )
+
+            if index_state_foreign_keys:
+
+                connection.execute(
+                    """
+                    DROP TABLE workspace_index_state
+                    """
+                )
+
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS workspace_index_state (
+                workspace_id TEXT PRIMARY KEY,
+
+                structural_state_hash TEXT,
+                structural_head_commit TEXT,
+                structural_indexed_at TEXT,
+
+                semantic_state_hash TEXT,
+                semantic_head_commit TEXT,
+                semantic_indexed_at TEXT
+            )
+            """
+        )          
         connection.commit()
 
 

@@ -40,6 +40,9 @@ from workspace.manager import (
 from workspace.scanner import (
     scan_workspace,
 )
+from indexing.index_state import (
+    mark_structural_index_current,
+)
 
 
 def run_full_index(
@@ -188,6 +191,10 @@ def run_full_index(
                     run_id,
                 ),
             )
+
+        mark_structural_index_current(
+            workspace_id
+        )
 
         return UnifiedIndexResult(
             workspace_id=(

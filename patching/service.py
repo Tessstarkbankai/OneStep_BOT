@@ -7,6 +7,10 @@ from datetime import (
 MAX_REPAIR_ATTEMPTS = 1
 from pathlib import Path
 
+from indexing.indexer import (
+    run_full_index,
+)
+
 from patching.applier import (
     apply_edits,
 )
@@ -669,6 +673,24 @@ def approve_patch(
         repo_path=repo_path,
         diff_text=stored_diff,
     )
+
+    #
+    # Source on disk has changed.
+    # Refresh deterministic structural
+    # intelligence immediately.
+    #
+    try:
+
+        run_full_index(
+            row["workspace_id"]
+        )
+
+    except Exception as error:
+
+        print(
+            "[index refresh warning] "
+            f"{error}"
+        )
 
     now = datetime.now(
         timezone.utc

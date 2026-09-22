@@ -29,6 +29,9 @@ from api.assistant import (
 from api.patches import (
     router as patches_router,
 )
+from api.index_state import (
+    router as index_state_router,
+)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     initialize_database()
@@ -51,6 +54,9 @@ app.include_router(calls_router)
 app.include_router(relations_router)
 app.include_router(
     repository_router
+)
+app.include_router(
+    index_state_router
 )
 app.include_router(
     retrieval_router

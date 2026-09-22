@@ -28,6 +28,9 @@ from workspace.manager import (
 from retrieval.semantic import (
     semantic_search,
 )
+from indexing.index_state import (
+    semantic_index_is_fresh,
+)
 
 def _add_reason(
     candidate: dict,
@@ -818,6 +821,12 @@ def hybrid_retrieve(
     semantic_used = False
     semantic_note = None
 
+    semantic_fresh = (
+        semantic_index_is_fresh(
+            workspace_id
+        )
+    )
+
     if use_semantic:
 
         if not _semantic_index_ready(
@@ -827,6 +836,13 @@ def hybrid_retrieve(
             semantic_note = (
                 "Semantic index is not "
                 "available for this workspace."
+            )
+
+        elif not semantic_fresh:
+
+            semantic_note = (
+                "Semantic index is stale "
+                "and was skipped."
             )
 
         else:

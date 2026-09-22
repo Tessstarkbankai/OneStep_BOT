@@ -13,6 +13,10 @@ from indexing.chunker import (
     build_code_chunks,
 )
 
+from indexing.index_state import (
+    mark_semantic_index_current,
+)
+
 from retrieval.models import (
     SemanticBuildResult,
     SemanticSearchHit,
@@ -199,6 +203,10 @@ def build_semantic_index(
                 indexed_at,
             ),
         )
+
+    mark_semantic_index_current(
+        workspace_id
+    )
 
     return SemanticBuildResult(
         workspace_id=workspace.id,
