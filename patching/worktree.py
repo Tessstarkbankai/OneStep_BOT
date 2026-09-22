@@ -20,6 +20,12 @@ def _git(
     repo_path: Path,
     *args: str,
 ) -> str:
+    """
+    Run a Git command inside repo_path.
+
+    Raises WorktreeError if Git returns
+    a non-zero exit code.
+    """
 
     result = subprocess.run(
         [
@@ -28,13 +34,11 @@ def _git(
             str(repo_path),
             *args,
         ],
-
         capture_output=True,
         text=True,
     )
 
     if result.returncode != 0:
-
         raise WorktreeError(
             result.stderr.strip()
             or result.stdout.strip()
@@ -47,6 +51,12 @@ def _git(
 def verify_git_repository(
     repo_path: Path,
 ):
+    """
+    Ensure the workspace is inside
+    a valid Git repository.
+    """
+
+    repo_path = repo_path.resolve()
 
     output = _git(
         repo_path,
@@ -55,7 +65,6 @@ def verify_git_repository(
     ).strip()
 
     if output != "true":
-
         raise WorktreeError(
             "Workspace is not a Git repository."
         )
@@ -64,6 +73,15 @@ def verify_git_repository(
 def verify_clean_repository(
     repo_path: Path,
 ):
+    """
+    Refuse patch generation when the real
+    repository contains uncommitted changes.
+
+    This prevents OutrightBot from creating
+    a sandbox from an unclear repository state.
+    """
+
+    repo_path = repo_path.resolve()
 
     status = _git(
         repo_path,
@@ -72,7 +90,6 @@ def verify_clean_repository(
     )
 
     if status.strip():
-
         raise WorktreeError(
             "Repository has uncommitted changes. "
             "Commit or stash them before creating "
@@ -83,6 +100,15 @@ def verify_clean_repository(
 def create_patch_worktree(
     repo_path: Path,
 ) -> tuple[str, Path]:
+    """
+    Create a detached Git worktree from HEAD.
+
+    Returns:
+        patch_id
+        sandbox_path
+    """
+
+    repo_path = repo_path.resolve()
 
     verify_git_repository(
         repo_path
@@ -105,32 +131,33 @@ def create_patch_worktree(
     sandbox = (
         WORKTREE_ROOT
         / patch_id
-    )
+    ).resolve()
+
+    if sandbox.exists():
+        raise WorktreeError(
+            "Patch sandbox already exists: "
+            f"{sandbox}"
+        )
 
     result = subprocess.run(
         [
             "git",
             "-C",
             str(repo_path),
-
             "worktree",
             "add",
-
             "--detach",
-
             str(sandbox),
-
             "HEAD",
         ],
-
         capture_output=True,
         text=True,
     )
 
     if result.returncode != 0:
-
         raise WorktreeError(
             result.stderr.strip()
+            or result.stdout.strip()
             or "Unable to create Git worktree."
         )
 
@@ -143,14 +170,17 @@ def create_patch_worktree(
 def get_diff(
     sandbox: Path,
 ) -> str:
+    """
+    Return the current unstaged Git diff
+    inside the patch sandbox.
+    """
+
+    sandbox = sandbox.resolve()
 
     return _git(
         sandbox,
-
         "diff",
-
         "--no-ext-diff",
-
         "--unified=3",
     )
 
@@ -158,17 +188,23 @@ def get_diff(
 def diff_check(
     sandbox: Path,
 ) -> tuple[bool, str]:
+    """
+    Run `git diff --check`.
+
+    This detects whitespace errors such as
+    trailing whitespace and malformed patches.
+    """
+
+    sandbox = sandbox.resolve()
 
     result = subprocess.run(
         [
             "git",
             "-C",
             str(sandbox),
-
             "diff",
             "--check",
         ],
-
         capture_output=True,
         text=True,
     )
@@ -187,52 +223,115 @@ def diff_check(
 def changed_files(
     sandbox: Path,
 ) -> list[str]:
+    """
+    Return repository-relative paths for
+    files changed in the patch sandbox.
+    """
+
+    sandbox = sandbox.resolve()
 
     output = _git(
         sandbox,
-
         "diff",
-
         "--name-only",
     )
 
     return [
         line.strip()
-
-        for line in (
-            output.splitlines()
-        )
-
+        for line in output.splitlines()
         if line.strip()
     ]
+
+
+def reset_worktree(
+    sandbox: Path,
+):
+    """
+    Reset the sandbox back to its original
+    detached HEAD state.
+
+    Used before an automatic patch repair.
+    """
+
+    sandbox = sandbox.resolve()
+
+    _git(
+        sandbox,
+        "reset",
+        "--hard",
+        "HEAD",
+    )
+
+    _git(
+        sandbox,
+        "clean",
+        "-fd",
+    )
 
 
 def remove_worktree(
     repo_path: Path,
     sandbox: Path,
 ):
+    """
+    Remove a patch worktree safely.
 
+    This does not modify the primary
+    repository's checked-out files.
+    """
+
+    repo_path = repo_path.resolve()
+    sandbox = sandbox.resolve()
+
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo_path),
+            "worktree",
+            "remove",
+            "--force",
+            str(sandbox),
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    #
+    # It is possible that Git already
+    # considers the worktree removed but
+    # the directory still exists.
+    #
+    if sandbox.exists():
+        shutil.rmtree(
+            sandbox,
+            ignore_errors=True,
+        )
+
+    #
+    # Clean stale worktree metadata.
+    #
     subprocess.run(
         [
             "git",
             "-C",
             str(repo_path),
-
             "worktree",
-            "remove",
-
-            "--force",
-
-            str(sandbox),
+            "prune",
         ],
-
         capture_output=True,
         text=True,
     )
 
-    if sandbox.exists():
-
-        shutil.rmtree(
-            sandbox,
-            ignore_errors=True,
+    if (
+        result.returncode != 0
+        and "is not a working tree"
+        not in result.stderr.lower()
+        and "is not a working tree"
+        not in result.stdout.lower()
+    ):
+        raise WorktreeError(
+            result.stderr.strip()
+            or result.stdout.strip()
+            or "Unable to remove Git worktree."
         )

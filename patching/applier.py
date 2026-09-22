@@ -112,7 +112,42 @@ def _safe_target(
 
     return target
 
+def _preserve_first_line_indent(
+    old_segment: str,
+    replacement: str,
+) -> str:
 
+    old_lines = old_segment.splitlines(
+        keepends=True
+    )
+
+    new_lines = replacement.splitlines(
+        keepends=True
+    )
+
+    if not old_lines or not new_lines:
+        return replacement
+
+    old_first = old_lines[0]
+
+    original_indent = old_first[
+        :len(old_first)
+        - len(old_first.lstrip(" \t"))
+    ]
+
+    #
+    # Always force the replacement
+    # symbol's first line to use the
+    # original symbol indentation.
+    #
+    new_lines[0] = (
+        original_indent
+        + new_lines[0].lstrip(" \t")
+    )
+
+    return "".join(
+        new_lines
+    )
 def apply_edits(
     workspace_id: str,
     sandbox: Path,
@@ -246,7 +281,12 @@ def apply_edits(
             replacement = (
                 item["edit"].new_text
             )
-
+            replacement = (
+                _preserve_first_line_indent(
+                    old_segment,
+                    replacement,
+                )
+            )
             #
             # Preserve normal file newline
             # behavior at the replaced

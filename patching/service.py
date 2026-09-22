@@ -4,7 +4,7 @@ from datetime import (
     datetime,
     timezone,
 )
-
+MAX_REPAIR_ATTEMPTS = 1
 from pathlib import Path
 
 from patching.applier import (
@@ -23,6 +23,7 @@ from patching.worktree import (
     changed_files,
     create_patch_worktree,
     get_diff,
+    reset_worktree,
 )
 
 from storage.database import (
@@ -100,50 +101,112 @@ def create_patch(
 
     try:
 
-        summary, edits, context = (
-            generate_patch_plan(
+        validation_feedback = None
+
+        summary = ""
+        files = []
+        diff = ""
+        validation = []
+
+        for attempt in range(
+            MAX_REPAIR_ATTEMPTS + 1
+        ):
+
+            if attempt > 0:
+
+                reset_worktree(
+                    sandbox
+                )
+
+            summary, edits, context = (
+                generate_patch_plan(
+                    workspace_id=(
+                        workspace_id
+                    ),
+
+                    task=task,
+
+                    max_files=max_files,
+
+                    use_semantic=(
+                        use_semantic
+                    ),
+
+                    validation_feedback=(
+                        validation_feedback
+                    ),
+                )
+            )
+
+            apply_edits(
                 workspace_id=(
                     workspace_id
                 ),
 
-                task=task,
-
-                max_files=max_files,
-
-                use_semantic=(
-                    use_semantic
-                ),
-            )
-        )
-
-        apply_edits(
-            workspace_id=workspace_id,
-            sandbox=sandbox,
-
-            edits=edits,
-        )
-
-        files = changed_files(
-            sandbox
-        )
-
-        if not files:
-
-            raise RuntimeError(
-                "Patch produced no Git changes."
-            )
-
-        diff = get_diff(
-            sandbox
-        )
-
-        validation = (
-            validate_patch(
                 sandbox=sandbox,
 
-                files=files,
+                edits=edits,
             )
-        )
+
+            files = changed_files(
+                sandbox
+            )
+
+            if not files:
+
+                raise RuntimeError(
+                    "Patch produced no "
+                    "Git changes."
+                )
+
+            diff = get_diff(
+                sandbox
+            )
+
+            validation = (
+                validate_patch(
+                    sandbox=sandbox,
+
+                    files=files,
+                )
+            )
+
+            validation_passed = all(
+                item.passed
+
+                for item in validation
+            )
+
+            if validation_passed:
+
+                break
+
+            if (
+                attempt
+                >= MAX_REPAIR_ATTEMPTS
+            ):
+
+                break
+
+            validation_feedback = (
+                "FAILED PATCH DIFF:\n"
+                + diff[:6000]
+                + "\n\n"
+                "VALIDATION ERRORS:\n"
+            )
+
+            for check in validation:
+
+                if check.passed:
+                    continue
+
+                validation_feedback += (
+                    "\n"
+                    + check.name
+                    + ":\n"
+                    + check.output[:3000]
+                    + "\n"
+                )
 
         validation_passed = all(
             item.passed

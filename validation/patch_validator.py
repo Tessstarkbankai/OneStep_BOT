@@ -12,31 +12,52 @@ from patching.worktree import (
 )
 
 
+VALIDATION_TIMEOUT = 60
+
+
 def _run(
     command: list[str],
     cwd: Path,
 ):
 
-    result = subprocess.run(
-        command,
+    try:
 
-        cwd=cwd,
+        result = subprocess.run(
+            command,
 
-        capture_output=True,
-        text=True,
+            cwd=cwd,
 
-        timeout=60,
-    )
+            capture_output=True,
+            text=True,
 
-    output = (
-        result.stdout
-        + result.stderr
-    ).strip()
+            timeout=(
+                VALIDATION_TIMEOUT
+            ),
+        )
 
-    return (
-        result.returncode == 0,
-        output[:4000],
-    )
+        output = (
+            result.stdout
+            + result.stderr
+        ).strip()
+
+        return (
+            result.returncode == 0,
+            output[:6000],
+        )
+
+    except subprocess.TimeoutExpired:
+
+        return (
+            False,
+            "Validation timed out.",
+        )
+
+    except FileNotFoundError as error:
+
+        return (
+            False,
+            str(error),
+        )
 
 
 def validate_patch(
@@ -50,7 +71,9 @@ def validate_patch(
     results = []
 
     #
-    # Always validate Git diff syntax.
+    # --------------------------------
+    # Git structural diff check
+    # --------------------------------
     #
     passed, output = diff_check(
         sandbox
@@ -69,20 +92,21 @@ def validate_patch(
         )
     )
 
+    #
+    # --------------------------------
+    # Python
+    # --------------------------------
+    #
     for file_path in files:
 
         absolute = (
-            sandbox
-            / file_path
+            sandbox / file_path
         )
 
         suffix = (
             absolute.suffix.lower()
         )
 
-        #
-        # Python syntax only.
-        #
         if suffix == ".py":
 
             passed, output = _run(
@@ -99,8 +123,8 @@ def validate_patch(
             results.append(
                 ValidationCheck(
                     name=(
-                        f"python syntax: "
-                        f"{file_path}"
+                        "python syntax: "
+                        + file_path
                     ),
 
                     passed=passed,
@@ -112,58 +136,28 @@ def validate_patch(
                 )
             )
 
-        #
-        # PHP syntax if PHP exists.
-        #
-        elif (
-            suffix == ".php"
-            and shutil.which(
-                "php"
-            )
-        ):
+    #
+    # --------------------------------
+    # PHP
+    # --------------------------------
+    #
+    if shutil.which("php"):
+
+        for file_path in files:
+
+            if not file_path.endswith(
+                ".php"
+            ):
+                continue
 
             passed, output = _run(
                 [
                     "php",
                     "-l",
-                    str(absolute),
-                ],
-
-                sandbox,
-            )
-
-            results.append(
-                ValidationCheck(
-                    name=(
-                        f"php syntax: "
-                        f"{file_path}"
+                    str(
+                        sandbox
+                        / file_path
                     ),
-
-                    passed=passed,
-
-                    output=output,
-                )
-            )
-
-        #
-        # JavaScript syntax if Node exists.
-        #
-        elif (
-            suffix in {
-                ".js",
-                ".mjs",
-                ".cjs",
-            }
-            and shutil.which(
-                "node"
-            )
-        ):
-
-            passed, output = _run(
-                [
-                    "node",
-                    "--check",
-                    str(absolute),
                 ],
 
                 sandbox,
@@ -172,8 +166,8 @@ def validate_patch(
             results.append(
                 ValidationCheck(
                     name=(
-                        f"javascript syntax: "
-                        f"{file_path}"
+                        "php syntax: "
+                        + file_path
                     ),
 
                     passed=passed,
@@ -184,5 +178,128 @@ def validate_patch(
                     ),
                 )
             )
+
+    #
+    # --------------------------------
+    # JavaScript
+    # --------------------------------
+    #
+    if shutil.which("node"):
+
+        for file_path in files:
+
+            if not file_path.endswith(
+                (
+                    ".js",
+                    ".mjs",
+                    ".cjs",
+                )
+            ):
+                continue
+
+            passed, output = _run(
+                [
+                    "node",
+                    "--check",
+                    str(
+                        sandbox
+                        / file_path
+                    ),
+                ],
+
+                sandbox,
+            )
+
+            results.append(
+                ValidationCheck(
+                    name=(
+                        "javascript syntax: "
+                        + file_path
+                    ),
+
+                    passed=passed,
+
+                    output=(
+                        output
+                        or "Syntax OK."
+                    ),
+                )
+            )
+
+    #
+    # --------------------------------
+    # TypeScript
+    # --------------------------------
+    #
+    typescript_files = [
+        file_path
+
+        for file_path in files
+
+        if file_path.endswith(
+            (
+                ".ts",
+                ".tsx",
+            )
+        )
+    ]
+
+    if (
+        typescript_files
+        and shutil.which("tsc")
+    ):
+
+        tsconfig = (
+            sandbox / "tsconfig.json"
+        )
+
+        if tsconfig.exists():
+
+            command = [
+                "tsc",
+                "--noEmit",
+                "--pretty",
+                "false",
+            ]
+
+            name = (
+                "typescript project check"
+            )
+
+        else:
+
+            command = [
+                "tsc",
+                "--noEmit",
+                "--pretty",
+                "false",
+                "--skipLibCheck",
+                "--target",
+                "ES2020",
+
+                *typescript_files,
+            ]
+
+            name = (
+                "typescript changed files"
+            )
+
+        passed, output = _run(
+            command,
+            sandbox,
+        )
+
+        results.append(
+            ValidationCheck(
+                name=name,
+
+                passed=passed,
+
+                output=(
+                    output
+                    or "TypeScript check passed."
+                ),
+            )
+        )
 
     return results

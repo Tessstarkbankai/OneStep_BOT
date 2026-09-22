@@ -30,3 +30,5 @@ htmlcov/
 workspaces/*/index/
 workspaces/*/vectors/
 workspaces/*/temp/
+
+node_modules/

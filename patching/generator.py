@@ -336,6 +336,10 @@ def generate_patch_plan(
     max_files: int = 3,
 
     use_semantic: bool = True,
+
+    validation_feedback: (
+        str | None
+    ) = None,
 ):
 
     context = build_context(
@@ -383,6 +387,19 @@ def generate_patch_plan(
             context,
         )
     )
+    feedback_section = ""
+
+    if validation_feedback:
+
+        feedback_section = (
+            "\n\n"
+            "PREVIOUS PATCH FAILED VALIDATION:\n"
+            + validation_feedback
+            + "\n\n"
+            "Generate a corrected patch from "
+            "the ORIGINAL repository source. "
+            "Do not repeat the validation error."
+        )
     messages = [
         {
             "role": "system",
@@ -403,6 +420,7 @@ def generate_patch_plan(
                 + "\n\n"
                 "EXACT REPOSITORY SOURCE:\n\n"
                 + raw_patch_context
+                + feedback_section
             ),
         },
     ]
