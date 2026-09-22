@@ -15,7 +15,9 @@ from patching.worktree import (
 from validation.project_detector import (
     detect_project,
 )
-
+from validation.test_runner import (
+    run_project_tests,
+)
 
 VALIDATION_TIMEOUT = 90
 
@@ -571,4 +573,35 @@ def validate_patch(
             )
         )
 
+    previous_checks_passed = all(
+        check.passed
+        for check in results
+    )
+
+    if previous_checks_passed:
+
+        test_results = (
+            run_project_tests(
+                sandbox
+            )
+        )
+
+        results.extend(
+            test_results
+        )
+
+    else:
+
+        results.append(
+            ValidationCheck(
+                name="project tests",
+
+                passed=True,
+
+                output=(
+                    "SKIPPED: earlier "
+                    "validation failed."
+                ),
+            )
+        )
     return results
