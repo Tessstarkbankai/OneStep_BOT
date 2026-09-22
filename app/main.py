@@ -26,6 +26,9 @@ from api.agent import (
 from api.assistant import (
     router as assistant_router,
 )
+from api.patches import (
+    router as patches_router,
+)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     initialize_database()
@@ -64,7 +67,9 @@ app.include_router(
 app.include_router(
     assistant_router
 )
-
+app.include_router(
+    patches_router
+)
 @app.get("/")
 def root():
     return {

@@ -521,6 +521,49 @@ def initialize_database() -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS patch_runs (
+                patch_id TEXT PRIMARY KEY,
+
+                workspace_id TEXT NOT NULL,
+
+                task TEXT NOT NULL,
+
+                status TEXT NOT NULL,
+
+                sandbox_path TEXT NOT NULL,
+
+                summary TEXT,
+
+                diff_text TEXT,
+
+                files_changed TEXT,
+
+                validation_json TEXT,
+
+                error_message TEXT,
+
+                created_at TEXT NOT NULL,
+                completed_at TEXT,
+
+                FOREIGN KEY(workspace_id)
+                    REFERENCES workspaces(id)
+                    ON DELETE CASCADE
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_patch_runs_workspace
+            ON patch_runs(
+                workspace_id,
+                created_at
+            )
+            """
+        )
         connection.commit()
 
 
