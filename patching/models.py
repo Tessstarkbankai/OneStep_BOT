@@ -3,7 +3,63 @@ from pydantic import (
     Field,
 )
 
+class PatchHistoryItem(BaseModel):
 
+    patch_id: str
+
+    workspace_id: str
+
+    task: str
+
+    status: str
+
+    summary: str
+
+    files_changed: list[str]
+
+    validation: list[dict]
+
+    base_commit: str | None
+
+    sandbox_path: str
+
+    sandbox_exists: bool
+
+    created_at: str | None
+
+    completed_at: str | None
+
+    decision_at: str | None
+
+    applied_at: str | None
+
+    stale_at: str | None
+
+    cleanup_at: str | None
+
+
+class PatchHistoryResponse(
+    BaseModel
+):
+
+    workspace_id: str
+
+    patches: list[
+        PatchHistoryItem
+    ]
+
+
+class PatchReconcileResponse(
+    BaseModel
+):
+
+    workspace_id: str
+
+    checked: int
+
+    patches: list[
+        PatchHistoryItem
+    ]
 class PatchRequest(BaseModel):
     task: str = Field(
         min_length=5,

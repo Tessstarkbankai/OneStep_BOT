@@ -523,6 +523,31 @@ def approve_patch(
     #
     if current_commit != base_commit:
 
+        stale_at = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        with get_database() as database:
+
+            database.execute(
+                """
+                UPDATE patch_runs
+
+                SET
+                    status = ?,
+                    stale_at = ?
+
+                WHERE patch_id = ?
+                  AND status = ?
+                """,
+                (
+                    "stale",
+                    stale_at,
+                    patch_id,
+                    "ready",
+                ),
+            )
+
         raise RuntimeError(
             "Repository HEAD changed after "
             "this patch was generated. "
@@ -530,7 +555,7 @@ def approve_patch(
             f"{base_commit[:12]}, "
             f"current HEAD: "
             f"{current_commit[:12]}. "
-            "Generate a fresh patch."
+            "Patch has been marked stale."
         )
 
     #
@@ -734,11 +759,12 @@ def reject_patch(
         raise RuntimeError(
             "Patch not found."
         )
-
+    
     if row["status"] not in {
         "ready",
         "validation_failed",
         "failed",
+        "stale",
     }:
 
         raise RuntimeError(

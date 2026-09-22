@@ -601,7 +601,24 @@ def initialize_database() -> None:
                 ADD COLUMN diff_sha256 TEXT
                 """
             )    
+        if "stale_at" not in patch_columns:
 
+            connection.execute(
+                """
+                ALTER TABLE patch_runs
+                ADD COLUMN stale_at TEXT
+                """
+            )
+
+        if "cleanup_at" not in patch_columns:
+
+            connection.execute(
+                """
+                ALTER TABLE patch_runs
+                ADD COLUMN cleanup_at TEXT
+                """
+            )
+            
         connection.execute(
             """
             CREATE INDEX IF NOT EXISTS
