@@ -18,7 +18,17 @@ class PatchRequest(BaseModel):
 
     use_semantic: bool = True
 
+class PatchDecisionResponse(BaseModel):
+    patch_id: str
 
+    workspace_id: str
+
+    status: str
+
+    message: str
+
+    files_changed: list[str]
+    
 class ProposedEdit(BaseModel):
     file_path: str
 

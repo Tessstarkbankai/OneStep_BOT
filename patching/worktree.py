@@ -218,8 +218,91 @@ def diff_check(
         result.returncode == 0,
         output,
     )
+def get_head_commit(
+    repo_path: Path,
+) -> str:
+
+    return _git(
+        repo_path,
+        "rev-parse",
+        "HEAD",
+    ).strip()
 
 
+def apply_diff_to_repository(
+    repo_path: Path,
+    diff_text: str,
+):
+    """
+    Validate and apply an already-reviewed
+    patch to the primary repository.
+
+    Does NOT commit.
+    """
+
+    repo_path = repo_path.resolve()
+
+    verify_git_repository(
+        repo_path
+    )
+
+    verify_clean_repository(
+        repo_path
+    )
+
+    #
+    # First check whether the patch can
+    # cleanly apply.
+    #
+    check = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo_path),
+            "apply",
+            "--check",
+            "-",
+        ],
+        input=diff_text,
+        capture_output=True,
+        text=True,
+    )
+
+    if check.returncode != 0:
+
+        raise WorktreeError(
+            "Patch no longer applies cleanly: "
+            + (
+                check.stderr.strip()
+                or check.stdout.strip()
+            )
+        )
+
+    #
+    # Apply only after --check passed.
+    #
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo_path),
+            "apply",
+            "-",
+        ],
+        input=diff_text,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+
+        raise WorktreeError(
+            "Unable to apply approved patch: "
+            + (
+                result.stderr.strip()
+                or result.stdout.strip()
+            )
+        )
 def changed_files(
     sandbox: Path,
 ) -> list[str]:

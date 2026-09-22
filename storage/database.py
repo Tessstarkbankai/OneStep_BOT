@@ -554,6 +554,54 @@ def initialize_database() -> None:
             """
         )
 
+        patch_columns = {
+            row[1]
+
+            for row in connection.execute(
+                """
+                PRAGMA table_info(
+                    patch_runs
+                )
+                """
+            ).fetchall()
+        }
+
+        if "base_commit" not in patch_columns:
+
+            connection.execute(
+                """
+                ALTER TABLE patch_runs
+                ADD COLUMN base_commit TEXT
+                """
+            )
+
+        if "decision_at" not in patch_columns:
+
+            connection.execute(
+                """
+                ALTER TABLE patch_runs
+                ADD COLUMN decision_at TEXT
+                """
+            )
+
+        if "applied_at" not in patch_columns:
+
+            connection.execute(
+                """
+                ALTER TABLE patch_runs
+                ADD COLUMN applied_at TEXT
+                """
+            )
+
+        if "diff_sha256" not in patch_columns:
+
+            connection.execute(
+                """
+                ALTER TABLE patch_runs
+                ADD COLUMN diff_sha256 TEXT
+                """
+            )    
+
         connection.execute(
             """
             CREATE INDEX IF NOT EXISTS

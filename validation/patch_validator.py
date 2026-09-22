@@ -1,5 +1,6 @@
 import shutil
 import subprocess
+import sys
 
 from pathlib import Path
 
@@ -11,14 +12,23 @@ from patching.worktree import (
     diff_check,
 )
 
+from validation.project_detector import (
+    detect_project,
+)
 
-VALIDATION_TIMEOUT = 60
+
+VALIDATION_TIMEOUT = 90
 
 
 def _run(
     command: list[str],
+
     cwd: Path,
-):
+
+    timeout: int = (
+        VALIDATION_TIMEOUT
+    ),
+) -> tuple[bool, str]:
 
     try:
 
@@ -28,11 +38,10 @@ def _run(
             cwd=cwd,
 
             capture_output=True,
+
             text=True,
 
-            timeout=(
-                VALIDATION_TIMEOUT
-            ),
+            timeout=timeout,
         )
 
         output = (
@@ -42,14 +51,19 @@ def _run(
 
         return (
             result.returncode == 0,
-            output[:6000],
+
+            output[:8000],
         )
 
     except subprocess.TimeoutExpired:
 
         return (
             False,
-            "Validation timed out.",
+
+            (
+                "Validation timed out "
+                f"after {timeout} seconds."
+            ),
         )
 
     except FileNotFoundError as error:
@@ -60,6 +74,28 @@ def _run(
         )
 
 
+def _result(
+    name: str,
+
+    passed: bool,
+
+    output: str,
+
+    success_message: str,
+) -> ValidationCheck:
+
+    return ValidationCheck(
+        name=name,
+
+        passed=passed,
+
+        output=(
+            output
+            or success_message
+        ),
+    )
+
+
 def validate_patch(
     sandbox: Path,
 
@@ -68,169 +104,288 @@ def validate_patch(
     ValidationCheck
 ]:
 
+    sandbox = sandbox.resolve()
+
     results = []
+
+    profile = detect_project(
+        sandbox,
+        files,
+    )
 
     #
     # --------------------------------
-    # Git structural diff check
+    # Project detection
     # --------------------------------
     #
-    passed, output = diff_check(
-        sandbox
-    )
+
+    detected = []
+
+    if profile.python:
+        detected.append("python")
+
+    if profile.node:
+        detected.append("node")
+
+    if profile.typescript:
+        detected.append(
+            "typescript"
+        )
+
+    if profile.php:
+        detected.append("php")
 
     results.append(
         ValidationCheck(
-            name="git diff --check",
+            name="project detection",
 
-            passed=passed,
+            passed=True,
 
             output=(
-                output
-                or "No whitespace errors."
+                ", ".join(detected)
+                if detected
+                else "No specific project type detected."
             ),
         )
     )
 
     #
     # --------------------------------
-    # Python
+    # Git diff integrity
     # --------------------------------
     #
-    for file_path in files:
+
+    passed, output = diff_check(
+        sandbox
+    )
+
+    results.append(
+        _result(
+            "git diff --check",
+
+            passed,
+
+            output,
+
+            "No whitespace errors.",
+        )
+    )
+
+    #
+    # --------------------------------
+    # Python changed files
+    # --------------------------------
+    #
+
+    python_files = [
+        file_path
+
+        for file_path in files
+
+        if file_path.endswith(
+            ".py"
+        )
+    ]
+
+    for file_path in python_files:
 
         absolute = (
-            sandbox / file_path
+            sandbox
+            / file_path
         )
 
-        suffix = (
-            absolute.suffix.lower()
+        passed, output = _run(
+            [
+                sys.executable,
+
+                "-m",
+
+                "py_compile",
+
+                str(absolute),
+            ],
+
+            sandbox,
         )
 
-        if suffix == ".py":
-
-            passed, output = _run(
-                [
-                    "python",
-                    "-m",
-                    "py_compile",
-                    str(absolute),
-                ],
-
-                sandbox,
-            )
-
-            results.append(
-                ValidationCheck(
-                    name=(
-                        "python syntax: "
-                        + file_path
-                    ),
-
-                    passed=passed,
-
-                    output=(
-                        output
-                        or "Syntax OK."
-                    ),
-                )
-            )
-
-    #
-    # --------------------------------
-    # PHP
-    # --------------------------------
-    #
-    if shutil.which("php"):
-
-        for file_path in files:
-
-            if not file_path.endswith(
-                ".php"
-            ):
-                continue
-
-            passed, output = _run(
-                [
-                    "php",
-                    "-l",
-                    str(
-                        sandbox
-                        / file_path
-                    ),
-                ],
-
-                sandbox,
-            )
-
-            results.append(
-                ValidationCheck(
-                    name=(
-                        "php syntax: "
-                        + file_path
-                    ),
-
-                    passed=passed,
-
-                    output=(
-                        output
-                        or "Syntax OK."
-                    ),
-                )
-            )
-
-    #
-    # --------------------------------
-    # JavaScript
-    # --------------------------------
-    #
-    if shutil.which("node"):
-
-        for file_path in files:
-
-            if not file_path.endswith(
+        results.append(
+            _result(
                 (
-                    ".js",
-                    ".mjs",
-                    ".cjs",
-                )
-            ):
-                continue
+                    "python syntax: "
+                    + file_path
+                ),
 
-            passed, output = _run(
-                [
-                    "node",
-                    "--check",
-                    str(
-                        sandbox
-                        / file_path
-                    ),
-                ],
+                passed,
 
-                sandbox,
+                output,
+
+                "Python syntax OK.",
             )
+        )
+
+    #
+    # --------------------------------
+    # PHP changed files
+    # --------------------------------
+    #
+
+    php_files = [
+        file_path
+
+        for file_path in files
+
+        if file_path.endswith(
+            ".php"
+        )
+    ]
+
+    if php_files:
+
+        php_binary = shutil.which(
+            "php"
+        )
+
+        if php_binary:
+
+            for file_path in php_files:
+
+                passed, output = _run(
+                    [
+                        php_binary,
+
+                        "-l",
+
+                        str(
+                            sandbox
+                            / file_path
+                        ),
+                    ],
+
+                    sandbox,
+                )
+
+                results.append(
+                    _result(
+                        (
+                            "php syntax: "
+                            + file_path
+                        ),
+
+                        passed,
+
+                        output,
+
+                        "PHP syntax OK.",
+                    )
+                )
+
+        else:
 
             results.append(
                 ValidationCheck(
                     name=(
-                        "javascript syntax: "
-                        + file_path
+                        "php validator"
                     ),
 
-                    passed=passed,
+                    passed=True,
 
                     output=(
-                        output
-                        or "Syntax OK."
+                        "SKIPPED: php binary "
+                        "is not installed."
                     ),
                 )
             )
 
     #
     # --------------------------------
-    # TypeScript
+    # JavaScript changed files
     # --------------------------------
     #
+
+    javascript_files = [
+        file_path
+
+        for file_path in files
+
+        if file_path.endswith(
+            (
+                ".js",
+                ".mjs",
+                ".cjs",
+            )
+        )
+    ]
+
+    if javascript_files:
+
+        node_binary = (
+            shutil.which(
+                "node"
+            )
+        )
+
+        if node_binary:
+
+            for file_path in (
+                javascript_files
+            ):
+
+                passed, output = _run(
+                    [
+                        node_binary,
+
+                        "--check",
+
+                        str(
+                            sandbox
+                            / file_path
+                        ),
+                    ],
+
+                    sandbox,
+                )
+
+                results.append(
+                    _result(
+                        (
+                            "javascript syntax: "
+                            + file_path
+                        ),
+
+                        passed,
+
+                        output,
+
+                        (
+                            "JavaScript "
+                            "syntax OK."
+                        ),
+                    )
+                )
+
+        else:
+
+            results.append(
+                ValidationCheck(
+                    name=(
+                        "javascript validator"
+                    ),
+
+                    passed=True,
+
+                    output=(
+                        "SKIPPED: node "
+                        "is not installed."
+                    ),
+                )
+            )
+
+    #
+    # --------------------------------
+    # TypeScript project validation
+    # --------------------------------
+    #
+
     typescript_files = [
         file_path
 
@@ -244,61 +399,175 @@ def validate_patch(
         )
     ]
 
-    if (
-        typescript_files
-        and shutil.which("tsc")
-    ):
+    if typescript_files:
 
-        tsconfig = (
-            sandbox / "tsconfig.json"
+        tsc_binary = (
+            shutil.which(
+                "tsc"
+            )
         )
 
-        if tsconfig.exists():
+        if tsc_binary:
 
-            command = [
-                "tsc",
-                "--noEmit",
-                "--pretty",
-                "false",
-            ]
+            if profile.tsconfig:
 
-            name = (
-                "typescript project check"
+                command = [
+                    tsc_binary,
+
+                    "--noEmit",
+
+                    "--pretty",
+                    "false",
+
+                    "-p",
+                    profile.tsconfig,
+                ]
+
+                check_name = (
+                    "typescript project check"
+                )
+
+            else:
+
+                command = [
+                    tsc_binary,
+
+                    "--noEmit",
+
+                    "--pretty",
+                    "false",
+
+                    "--skipLibCheck",
+
+                    "--target",
+                    "ES2020",
+
+                    *typescript_files,
+                ]
+
+                check_name = (
+                    "typescript changed files"
+                )
+
+            passed, output = _run(
+                command,
+
+                sandbox,
+            )
+
+            results.append(
+                _result(
+                    check_name,
+
+                    passed,
+
+                    output,
+
+                    (
+                        "TypeScript "
+                        "check passed."
+                    ),
+                )
             )
 
         else:
 
-            command = [
-                "tsc",
-                "--noEmit",
-                "--pretty",
-                "false",
-                "--skipLibCheck",
-                "--target",
-                "ES2020",
+            results.append(
+                ValidationCheck(
+                    name=(
+                        "typescript validator"
+                    ),
 
-                *typescript_files,
-            ]
+                    passed=True,
 
-            name = (
-                "typescript changed files"
+                    output=(
+                        "SKIPPED: tsc "
+                        "is not installed."
+                    ),
+                )
             )
 
+    #
+    # --------------------------------
+    # Composer manifest validation
+    # --------------------------------
+    #
+
+    if profile.composer_json:
+
+        composer_binary = (
+            shutil.which(
+                "composer"
+            )
+        )
+
+        if composer_binary:
+
+            passed, output = _run(
+                [
+                    composer_binary,
+
+                    "validate",
+
+                    "--no-check-publish",
+
+                    "--no-interaction",
+                ],
+
+                sandbox,
+            )
+
+            results.append(
+                _result(
+                    "composer validate",
+
+                    passed,
+
+                    output,
+
+                    (
+                        "Composer manifest "
+                        "is valid."
+                    ),
+                )
+            )
+
+    #
+    # --------------------------------
+    # package.json JSON validation
+    # --------------------------------
+    #
+
+    if profile.package_json:
+
+        package_path = (
+            sandbox
+            / profile.package_json
+        )
+
         passed, output = _run(
-            command,
+            [
+                sys.executable,
+
+                "-m",
+
+                "json.tool",
+
+                str(package_path),
+            ],
+
             sandbox,
         )
 
         results.append(
-            ValidationCheck(
-                name=name,
+            _result(
+                "package.json validation",
 
-                passed=passed,
+                passed,
 
-                output=(
-                    output
-                    or "TypeScript check passed."
-                ),
+                output,
+
+                "package.json is valid.",
             )
         )
 

@@ -4,6 +4,7 @@ from fastapi import (
 )
 
 from patching.models import (
+    PatchDecisionResponse,
     PatchRequest,
     PatchResponse,
     PatchStatus,
@@ -12,6 +13,9 @@ from patching.models import (
 from patching.service import (
     create_patch,
     get_patch,
+    reject_patch,
+    approve_patch,
+
 )
 
 from llm.provider import (
@@ -31,6 +35,84 @@ router = APIRouter(
     tags=["Safe Patching"],
 )
 
+@router.post(
+    "/api/patches/"
+    "{patch_id}/approve",
+
+    response_model=(
+        PatchDecisionResponse
+    ),
+)
+def api_approve_patch(
+    patch_id: str,
+):
+
+    try:
+
+        return approve_patch(
+            patch_id
+        )
+
+    except WorkspaceError as error:
+
+        raise HTTPException(
+            status_code=404,
+            detail=str(error),
+        )
+
+    except WorktreeError as error:
+
+        raise HTTPException(
+            status_code=409,
+            detail=str(error),
+        )
+
+    except RuntimeError as error:
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@router.post(
+    "/api/patches/"
+    "{patch_id}/reject",
+
+    response_model=(
+        PatchDecisionResponse
+    ),
+)
+def api_reject_patch(
+    patch_id: str,
+):
+
+    try:
+
+        return reject_patch(
+            patch_id
+        )
+
+    except WorkspaceError as error:
+
+        raise HTTPException(
+            status_code=404,
+            detail=str(error),
+        )
+
+    except WorktreeError as error:
+
+        raise HTTPException(
+            status_code=409,
+            detail=str(error),
+        )
+
+    except RuntimeError as error:
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
 
 @router.post(
     "/api/workspaces/"
