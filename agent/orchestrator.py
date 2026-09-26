@@ -514,7 +514,7 @@ def run_agent(
 
         schema=FINAL_SCHEMA,
 
-        max_tokens=350,
+        max_tokens=2048,
     )
 
     llm_model = (

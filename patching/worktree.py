@@ -202,6 +202,8 @@ def diff_check(
             "git",
             "-C",
             str(sandbox),
+            "-c",
+            "core.whitespace=blank-at-eol,blank-at-eof,cr-at-eol",
             "diff",
             "--check",
         ],

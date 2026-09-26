@@ -1,3 +1,4 @@
+import os
 from functools import (
     lru_cache,
 )
@@ -5,6 +6,14 @@ from functools import (
 from sentence_transformers import (
     SentenceTransformer,
 )
+
+# Optimize PyTorch CPU multi-threading on CPU-only machines
+try:
+    import torch
+    cpu_count = os.cpu_count() or 4
+    torch.set_num_threads(min(cpu_count, 8))
+except Exception:
+    pass
 
 
 MODEL_NAME = (
@@ -14,11 +23,11 @@ MODEL_NAME = (
 
 
 MAX_SEQUENCE_LENGTH = 1024
+CPU_BATCH_SIZE = 32
 
 
 @lru_cache(maxsize=1)
 def get_embedding_model():
-
     model = SentenceTransformer(
         MODEL_NAME,
 
@@ -37,7 +46,7 @@ def get_embedding_model():
 def embed_texts(
     texts: list[str],
 
-    batch_size: int = 8,
+    batch_size: int = CPU_BATCH_SIZE,
 ) -> list[list[float]]:
 
     if not texts:
@@ -50,7 +59,7 @@ def embed_texts(
 
         batch_size=batch_size,
 
-        show_progress_bar=False,
+        show_progress_bar=True,
 
         normalize_embeddings=True,
 

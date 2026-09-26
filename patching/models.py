@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import (
     BaseModel,
     Field,
@@ -86,13 +88,29 @@ class PatchDecisionResponse(BaseModel):
     files_changed: list[str]
     
 class ProposedEdit(BaseModel):
+    operation: Literal[
+        "replace_symbol",
+        "insert_after_symbol",
+        "insert_inside_symbol",
+        "append_file",
+    ] = "replace_symbol"
+
     file_path: str
 
-    target_symbol: str
+    #
+    # Null only for append_file, where
+    # there is no existing symbol to
+    # anchor to. Every other operation
+    # requires an exact existing symbol
+    # name (see generator.py's
+    # PATCH_EDIT_RULES and applier.py's
+    # resolve_symbol).
+    #
+    target_symbol: str | None = None
 
     new_text: str
 
-    reason: str
+    reason: str = ""
 
 
 class ValidationCheck(BaseModel):

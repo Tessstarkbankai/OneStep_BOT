@@ -32,6 +32,9 @@ from api.patches import (
 from api.index_state import (
     router as index_state_router,
 )
+from api.ui import (
+    router as ui_router,
+)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     initialize_database()
@@ -45,7 +48,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
-
+app.include_router(
+    ui_router
+)
 
 app.include_router(workspaces_router)
 app.include_router(indexing_router)

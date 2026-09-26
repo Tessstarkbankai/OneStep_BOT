@@ -55,22 +55,18 @@ def _content_hash(
 
 def _chunk_id(
     workspace_id: str,
-
     file_path: str,
-
     symbol_name: str | None,
-
+    symbol_kind: str | None,
     start_line: int,
-
     end_line: int,
-
     content_hash: str,
 ) -> str:
-
     raw = (
         f"{workspace_id}|"
         f"{file_path}|"
         f"{symbol_name or ''}|"
+        f"{symbol_kind or ''}|"
         f"{start_line}|"
         f"{end_line}|"
         f"{content_hash}"
@@ -137,15 +133,11 @@ def _make_chunk(
     return {
         "chunk_id": _chunk_id(
             workspace_id=workspace_id,
-
             file_path=file_path,
-
             symbol_name=symbol_name,
-
+            symbol_kind=symbol_kind,
             start_line=start_line,
-
             end_line=end_line,
-
             content_hash=hash_value,
         ),
 
@@ -264,6 +256,7 @@ def build_code_chunks(
     ).isoformat()
 
     chunks = []
+    seen_chunk_ids = set()
 
     for file_row in files:
 
@@ -419,11 +412,9 @@ def build_code_chunks(
                     ),
                 )
 
-                if chunk:
-
-                    chunks.append(
-                        chunk
-                    )
+                if chunk and chunk["chunk_id"] not in seen_chunk_ids:
+                    seen_chunk_ids.add(chunk["chunk_id"])
+                    chunks.append(chunk)
 
         #
         # Files containing no useful
@@ -512,16 +503,23 @@ def build_code_chunks(
                     ),
                 )
 
-                if chunk:
-
-                    chunks.append(
-                        chunk
-                    )
+                if chunk and chunk["chunk_id"] not in seen_chunk_ids:
+                    seen_chunk_ids.add(chunk["chunk_id"])
+                    chunks.append(chunk)
 
                 if end_line >= total_lines:
                     break
 
                 start_line += step
+
+    # Deduplicate chunks defensively to eliminate any duplicate chunk_ids
+    unique_chunks = []
+    final_seen = set()
+    for chunk in chunks:
+        if chunk and chunk["chunk_id"] not in final_seen:
+            final_seen.add(chunk["chunk_id"])
+            unique_chunks.append(chunk)
+    chunks = unique_chunks
 
     with get_database() as database:
 
@@ -535,7 +533,7 @@ def build_code_chunks(
 
         database.executemany(
             """
-            INSERT INTO code_chunks (
+            INSERT OR REPLACE INTO code_chunks (
                 chunk_id,
                 workspace_id,
                 file_path,

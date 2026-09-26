@@ -22,7 +22,7 @@ LLM_TIMEOUT_SECONDS = float(
 LLM_MAX_TOKENS = int(
     os.getenv(
         "OUTRIGHTBOT_LLM_MAX_TOKENS",
-        "400",
+        "2048",
     )
 )
 

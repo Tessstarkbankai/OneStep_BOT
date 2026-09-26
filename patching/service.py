@@ -5,6 +5,7 @@ from datetime import (
     timezone,
 )
 MAX_REPAIR_ATTEMPTS = 1
+MAX_TARGET_REPAIR_ATTEMPTS = 1
 from pathlib import Path
 
 from indexing.indexer import (
@@ -154,35 +155,129 @@ def create_patch(
                     sandbox
                 )
 
-            summary, edits, context = (
-                generate_patch_plan(
-                    workspace_id=(
-                        workspace_id
-                    ),
+            #
+            # Target-repair loop.
+            #
+            # This is nested inside the
+            # existing validation-repair
+            # loop above, and handles a
+            # different failure mode:
+            # the model picking a
+            # target_symbol that cannot
+            # be resolved/applied at all
+            # (RuntimeError/PatchApplyError
+            # from generate_patch_plan or
+            # apply_edits), as opposed to
+            # a patch that applies but
+            # fails compiler/lint/test
+            # validation.
+            #
+            # Both generate_patch_plan and
+            # apply_edits are inside the
+            # try block here (unlike a
+            # naive version that only
+            # wraps apply_edits), because
+            # generate_patch_plan performs
+            # its own target-symbol
+            # existence check and can
+            # raise RuntimeError before
+            # apply_edits is ever called.
+            # If that call were left
+            # outside the try, this repair
+            # loop would never trigger for
+            # that case.
+            #
+            target_feedback = None
 
-                    task=task,
+            for target_attempt in range(
+                MAX_TARGET_REPAIR_ATTEMPTS
+                + 1
+            ):
 
-                    max_files=max_files,
-
-                    use_semantic=(
-                        use_semantic
-                    ),
-
-                    validation_feedback=(
-                        validation_feedback
-                    ),
+                combined_feedback = (
+                    validation_feedback
                 )
-            )
 
-            apply_edits(
-                workspace_id=(
-                    workspace_id
-                ),
+                if target_feedback:
 
-                sandbox=sandbox,
+                    combined_feedback = (
+                        (
+                            validation_feedback
+                            + "\n\n"
+                        )
+                        if validation_feedback
+                        else ""
+                    ) + target_feedback
 
-                edits=edits,
-            )
+                try:
+
+                    summary, edits, context = (
+                        generate_patch_plan(
+                            workspace_id=(
+                                workspace_id
+                            ),
+
+                            task=task,
+
+                            max_files=max_files,
+
+                            use_semantic=(
+                                use_semantic
+                            ),
+
+                            validation_feedback=(
+                                combined_feedback
+                            ),
+                        )
+                    )
+
+                    apply_edits(
+                        workspace_id=(
+                            workspace_id
+                        ),
+
+                        sandbox=sandbox,
+
+                        edits=edits,
+                    )
+
+                    break
+
+                except (RuntimeError, ValueError) as error:
+
+                    if (
+                        target_attempt
+                        >= MAX_TARGET_REPAIR_ATTEMPTS
+                    ):
+
+                        raise
+
+                    reset_worktree(
+                        sandbox
+                    )
+
+                    target_feedback = (
+                        "The previous patch "
+                        "could not be applied.\n\n"
+                        f"ERROR:\n{error}\n\n"
+                        "You selected a target "
+                        "symbol that does not "
+                        "exist.\n"
+                        "Use ONLY exact existing "
+                        "symbols from the supplied "
+                        "symbol inventory.\n\n"
+                        "If adding NEW code, the "
+                        "new function/method name "
+                        "must NOT be target_symbol.\n\n"
+                        "Use:\n"
+                        "- insert_after_symbol with "
+                        "an existing sibling anchor\n"
+                        "- insert_inside_symbol with "
+                        "an existing class\n"
+                        "- append_file for new "
+                        "top-level code when "
+                        "appropriate."
+                    )
 
             files = changed_files(
                 sandbox
@@ -224,6 +319,20 @@ def create_patch(
                 >= MAX_REPAIR_ATTEMPTS
             ):
 
+                break
+
+            failed_checks = [
+                check
+                for check in validation
+                if not check.passed
+            ]
+
+            # If all failures are solely test timeouts or environment skips,
+            # LLM repair cannot fix an environment test runner timeout, so don't loop.
+            if failed_checks and all(
+                "timed out" in check.output.lower()
+                for check in failed_checks
+            ):
                 break
 
             validation_feedback = (

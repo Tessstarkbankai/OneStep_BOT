@@ -321,7 +321,7 @@ def api_create_patch(
             detail=str(error),
         )
 
-    except RuntimeError as error:
+    except (RuntimeError, ValueError) as error:
 
         raise HTTPException(
             status_code=500,

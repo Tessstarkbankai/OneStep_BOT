@@ -1,4 +1,5 @@
 import json
+import re
 
 import httpx
 
@@ -108,42 +109,139 @@ def get_llm_health() -> dict:
         }
 
 
+def _repair_truncated_json(text: str) -> dict | None:
+    text = text.strip()
+    if not text:
+        return None
+
+    # Find first opening brace
+    start = text.find("{")
+    if start == -1:
+        return None
+    text = text[start:]
+
+    def _parse(s: str) -> dict | None:
+        for strict in (True, False):
+            try:
+                res = json.loads(s, strict=strict)
+                if isinstance(res, dict):
+                    return res
+            except Exception:
+                pass
+        return None
+
+    # 1. Direct parse
+    parsed = _parse(text)
+    if parsed is not None:
+        return parsed
+
+    # 2. Balanced slice between first and last closing brace
+    last_brace = text.rfind("}")
+    if last_brace > 0:
+        parsed = _parse(text[:last_brace + 1])
+        if parsed is not None:
+            return parsed
+
+    # 3. Structural repair for truncated JSON
+    repaired = text
+    in_string = False
+    escape = False
+    stack = []
+
+    for ch in repaired:
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if not in_string:
+            if ch in ("{", "["):
+                stack.append("}" if ch == "{" else "]")
+            elif ch in ("}", "]"):
+                if stack and stack[-1] == ch:
+                    stack.pop()
+
+    # If cutoff inside an open string literal, close it
+    if in_string:
+        repaired += '"'
+
+    # Remove trailing unclosed key-values or dangling commas
+    repaired = re.sub(r",\s*$", "", repaired)
+    repaired = re.sub(r":\s*$", ": null", repaired)
+    repaired = re.sub(r',\s*"[^"]*"\s*:\s*$', "", repaired)
+    repaired = re.sub(r'"[^"]*"\s*:\s*$', "", repaired)
+    repaired = re.sub(r",\s*$", "", repaired)
+
+    # Re-calculate remaining stack on cleaned text
+    in_string = False
+    escape = False
+    final_stack = []
+    for ch in repaired:
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if not in_string:
+            if ch in ("{", "["):
+                final_stack.append("}" if ch == "{" else "]")
+            elif ch in ("}", "]"):
+                if final_stack and final_stack[-1] == ch:
+                    final_stack.pop()
+
+    repaired += "".join(reversed(final_stack))
+
+    parsed = _parse(repaired)
+    if parsed is not None:
+        return parsed
+
+    # 4. Fallback: progressively back up to previous complete element/object
+    for pos in range(len(text) - 1, 0, -1):
+        if text[pos] in (",", "{", "[", "}"):
+            candidate = text[:pos].rstrip(",").strip()
+            if not candidate:
+                continue
+            sub_stack = []
+            in_s = False
+            esc = False
+            for c in candidate:
+                if esc:
+                    esc = False
+                    continue
+                if c == "\\":
+                    esc = True
+                    continue
+                if c == '"':
+                    in_s = not in_s
+                    continue
+                if not in_s:
+                    if c in ("{", "["):
+                        sub_stack.append("}" if c == "{" else "]")
+                    elif c in ("}", "]") and sub_stack and sub_stack[-1] == c:
+                        sub_stack.pop()
+            candidate += "".join(reversed(sub_stack))
+            parsed = _parse(candidate)
+            if parsed is not None:
+                return parsed
+
+    return None
+
+
 def _extract_json(
     content: str,
 ) -> dict:
 
-    content = content.strip()
-
-    try:
-
-        return json.loads(
-            content
-        )
-
-    except json.JSONDecodeError:
-        pass
-
-    #
-    # Defensive fallback.
-    #
-    start = content.find("{")
-    end = content.rfind("}")
-
-    if (
-        start >= 0
-        and end > start
-    ):
-
-        try:
-
-            return json.loads(
-                content[
-                    start:end + 1
-                ]
-            )
-
-        except json.JSONDecodeError:
-            pass
+    repaired = _repair_truncated_json(content)
+    if isinstance(repaired, dict):
+        return repaired
 
     raise LLMError(
         "Ollama did not return valid JSON. "
@@ -185,6 +283,8 @@ def chat_json(
             "temperature": (
                 LLM_TEMPERATURE
             ),
+
+            "repeat_penalty": 1.15,
 
             "num_ctx": (
                 LLM_NUM_CTX
@@ -277,7 +377,7 @@ def chat_with_tools(
 
     tools: list[dict],
 
-    max_tokens: int = 160,
+    max_tokens: int = 512,
 ) -> ToolChatResponse:
 
     request_body = {

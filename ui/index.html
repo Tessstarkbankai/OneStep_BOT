@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <link rel="icon" href="data:," />
+  <title>OutrightBot</title>
+  <link rel="stylesheet" href="/dashboard/styles.css" />
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-row">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 28 28" fill="none">
+            <rect x="2.5" y="2.5" width="23" height="23" rx="7" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M8 14.2c2.7-5.4 9.1-5.4 12 0-2.9 5.4-9.3 5.4-12 0Z" stroke="currentColor" stroke-width="1.6"/>
+            <circle cx="14" cy="14.2" r="2.2" fill="currentColor"/>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-name">OutrightBot</div>
+          <div class="brand-subtitle">Code intelligence</div>
+        </div>
+      </div>
+
+      <nav class="side-nav" aria-label="Primary navigation">
+        <button class="nav-item active" data-view="chat">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 5.5h14v10H9l-4 3v-13Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+          </span>
+          Chat
+        </button>
+        <button class="nav-item" data-view="patches">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M8 4h8M7 7h10v13H7V7Zm3 4h4m-4 4h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          </span>
+          Patches
+          <span id="readyBadge" class="nav-count hidden">0</span>
+        </button>
+        <button class="nav-item" data-view="repository">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M4.5 7.5 12 4l7.5 3.5L12 11 4.5 7.5Zm0 4L12 15l7.5-3.5M4.5 15.5 12 19l7.5-3.5" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+          </span>
+          Repository
+        </button>
+      </nav>
+
+      <div class="sidebar-divider"></div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-header">
+          <div class="sidebar-label">Workspace</div>
+          <button id="addWorkspaceButton" class="section-action-btn" type="button" title="Add workspace">
+            <svg viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <span>Add</span>
+          </button>
+        </div>
+        <button id="workspaceButton" class="workspace-card" type="button">
+          <div class="workspace-avatar" id="workspaceAvatar">OR</div>
+          <div class="workspace-copy">
+            <div id="workspaceName" class="workspace-name">Loading…</div>
+            <div id="workspaceMeta" class="workspace-meta">Connecting</div>
+          </div>
+          <svg class="chevron" viewBox="0 0 20 20" fill="none"><path d="m7 8 3 3 3-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div id="workspaceMenu" class="workspace-menu hidden"></div>
+      </div>
+
+      <div class="sidebar-spacer"></div>
+
+      <div class="sidebar-status">
+        <div class="status-row">
+          <span class="status-label">Model</span>
+          <span id="modelStatus" class="status-pill neutral"><span class="status-dot"></span>Checking</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Structural</span>
+          <span id="structuralMini" class="tiny-state">—</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Semantic</span>
+          <span id="semanticMini" class="tiny-state">—</span>
+        </div>
+      </div>
+
+      <button id="settingsButton" class="settings-button" type="button">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 15.3a3.3 3.3 0 1 0 0-6.6 3.3 3.3 0 0 0 0 6.6Z" stroke="currentColor" stroke-width="1.6"/><path d="M19 13.5v-3l-2-.7a7.1 7.1 0 0 0-.8-1.8l.9-1.9-2.2-2.1-1.8.9a7 7 0 0 0-1.9-.8L10.5 2h-3l-.7 2.1a7 7 0 0 0-1.9.8L3.1 4 1 6.1 1.9 8a7 7 0 0 0-.8 1.8L-1 10.5v3l2.1.7c.2.7.5 1.3.8 1.9L1 17.9 3.1 20l1.8-.9c.6.4 1.2.6 1.9.8l.7 2.1h3l.7-2.1c.7-.2 1.3-.4 1.9-.8l1.8.9 2.2-2.1-.9-1.8c.4-.6.6-1.2.8-1.9l2-.7Z" stroke="currentColor" stroke-width="1.3" transform="translate(2 0) scale(.82)"/></svg>
+        Settings
+      </button>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <div id="viewEyebrow" class="eyebrow">Workspace assistant</div>
+          <h1 id="viewTitle">Ask your codebase</h1>
+        </div>
+        <div class="topbar-actions">
+          <button id="refreshAll" class="icon-button" title="Refresh dashboard" aria-label="Refresh dashboard">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M20 7v5h-5M4 17v-5h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.3 10a7 7 0 0 0-12-3L4 9m2 5a7 7 0 0 0 12 3l2-2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          </button>
+          <div id="connectionPill" class="connection-pill"><span class="connection-dot"></span><span>API</span></div>
+        </div>
+      </header>
+
+      <section id="chatView" class="view active">
+        <div class="chat-layout">
+          <div class="chat-panel">
+            <div id="emptyChat" class="empty-chat">
+              <div class="hero-orb">
+                <svg viewBox="0 0 44 44" fill="none"><path d="M12 21.5c3.5-8.2 16.2-8.2 20 0-3.8 8.2-16.5 8.2-20 0Z" stroke="currentColor" stroke-width="1.5"/><circle cx="22" cy="21.5" r="4.1" fill="currentColor"/></svg>
+              </div>
+              <h2>What do you want to understand or change?</h2>
+              <p>OutrightBot can search the repository, trace code relationships, explain behavior, and prepare reviewable patches.</p>
+              <div class="suggestions">
+                <button class="suggestion" data-prompt="Trace how order pricing is calculated and explain the call flow.">
+                  Trace a call flow
+                </button>
+                <button class="suggestion" data-prompt="Find where customer lookup is implemented and explain the relevant files.">
+                  Find an implementation
+                </button>
+                <button class="suggestion" data-prompt="Review the pricing logic for edge cases without changing any code.">
+                  Review code
+                </button>
+              </div>
+            </div>
+
+            <div id="messages" class="messages"></div>
+
+            <div class="composer-wrap">
+              <div id="composerContext" class="composer-context hidden"></div>
+              <div class="composer">
+                <textarea id="promptInput" rows="1" placeholder="Ask OutrightBot about this repository…"></textarea>
+                <div class="composer-bottom">
+                  <div class="composer-options">
+                    <select id="modeSelect" class="minimal-select" title="Agent mode">
+                      <option value="auto">Auto</option>
+                      <option value="fast">Fast</option>
+                      <option value="agent">Agent</option>
+                    </select>
+                    <label class="toggle-label">
+                      <input id="semanticToggle" type="checkbox" checked />
+                      <span class="toggle"></span>
+                      Semantic
+                    </label>
+                  </div>
+                  <div class="composer-actions">
+                    <button id="patchModeButton" class="secondary-button">
+                      <svg viewBox="0 0 20 20" fill="none"><path d="M5 4h10v12H5V4Zm3 3h4m-4 3h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                      Make change
+                    </button>
+                    <button id="sendButton" class="send-button" title="Send">
+                      <svg viewBox="0 0 20 20" fill="none"><path d="m4 10 11-5-3 10-2-4-6-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="composer-hint">OutrightBot can make mistakes. Review generated patches before approval.</div>
+            </div>
+          </div>
+
+          <aside class="context-panel">
+            <div class="panel-section">
+              <div class="panel-heading">
+                <span>Repository state</span>
+                <button id="refreshIndexState" class="text-button">Refresh</button>
+              </div>
+              <div class="index-summary">
+                <div class="index-row">
+                  <span class="index-icon">
+                    <svg viewBox="0 0 20 20" fill="none"><path d="M4 6.5 10 4l6 2.5-6 2.6L4 6.5Zm0 3.4 6 2.6 6-2.6M4 13.2l6 2.8 6-2.8" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+                  </span>
+                  <div>
+                    <div class="index-name">Structural index</div>
+                    <div id="structuralStatus" class="index-value">Checking…</div>
+                  </div>
+                  <span id="structuralDot" class="quality-dot neutral"></span>
+                </div>
+                <div class="index-row">
+                  <span class="index-icon">
+                    <svg viewBox="0 0 20 20" fill="none"><path d="M4 14.5c1.8-6.2 10.2-6.2 12 0M6.2 10.4c1.2-3.4 6.4-3.4 7.6 0M10 7.2v-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                  </span>
+                  <div>
+                    <div class="index-name">Semantic index</div>
+                    <div id="semanticStatus" class="index-value">Checking…</div>
+                  </div>
+                  <span id="semanticDot" class="quality-dot neutral"></span>
+                </div>
+              </div>
+              <div id="dirtyNotice" class="dirty-notice hidden">
+                <div class="dirty-title">Working tree changed</div>
+                <div id="dirtyFiles" class="dirty-files"></div>
+              </div>
+            </div>
+
+            <div class="panel-section">
+              <div class="panel-heading">
+                <span>Recent patches</span>
+                <button class="text-button" data-view-jump="patches">View all</button>
+              </div>
+              <div id="recentPatches" class="recent-list">
+                <div class="skeleton-row"></div>
+                <div class="skeleton-row"></div>
+              </div>
+            </div>
+
+            <div class="panel-section compact">
+              <div class="panel-heading"><span>Session</span></div>
+              <div class="metric-grid">
+                <div class="metric">
+                  <div id="sessionRequests" class="metric-value">0</div>
+                  <div class="metric-label">Requests</div>
+                </div>
+                <div class="metric">
+                  <div id="sessionPatches" class="metric-value">0</div>
+                  <div class="metric-label">Patches</div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section id="patchesView" class="view">
+        <div class="content-page">
+          <div class="page-toolbar">
+            <div class="filter-tabs" id="patchFilters">
+              <button class="filter-tab active" data-filter="all">All</button>
+              <button class="filter-tab" data-filter="ready">Ready</button>
+              <button class="filter-tab" data-filter="applied">Applied</button>
+              <button class="filter-tab" data-filter="rejected">Rejected</button>
+              <button class="filter-tab" data-filter="stale">Stale</button>
+              <button class="filter-tab" data-filter="failed">Failed</button>
+            </div>
+            <button id="reconcileAll" class="secondary-button">Reconcile</button>
+          </div>
+          <div id="patchList" class="patch-table">
+            <div class="table-loading">Loading patch history…</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="repositoryView" class="view">
+        <div class="content-page">
+          <div class="repo-grid">
+            <article class="surface-card">
+              <div class="surface-header">
+                <div>
+                  <div class="surface-kicker">Repository</div>
+                  <h3 id="repoCardName">Current workspace</h3>
+                </div>
+                <span id="repoDirtyBadge" class="soft-badge">Checking</span>
+              </div>
+              <div class="repo-details">
+                <div class="detail-row">
+                  <span>HEAD</span>
+                  <code id="repoHead">—</code>
+                </div>
+                <div class="detail-row">
+                  <span>State hash</span>
+                  <code id="repoHash">—</code>
+                </div>
+                <div class="detail-row">
+                  <span>Changed files</span>
+                  <strong id="repoChangedCount">—</strong>
+                </div>
+              </div>
+            </article>
+
+            <article class="surface-card">
+              <div class="surface-header">
+                <div>
+                  <div class="surface-kicker">Structural</div>
+                  <h3>Code intelligence</h3>
+                </div>
+                <span id="repoStructuralBadge" class="soft-badge">Checking</span>
+              </div>
+              <p class="surface-copy">Symbols, imports, calls, class relationships, repository map, and lexical retrieval.</p>
+              <div class="surface-footer">
+                <div id="structuralIndexedAt" class="subtle">Not indexed</div>
+                <button id="rebuildStructural" class="primary-button">Refresh structural index</button>
+              </div>
+            </article>
+
+            <article class="surface-card">
+              <div class="surface-header">
+                <div>
+                  <div class="surface-kicker">Semantic</div>
+                  <h3>Code embeddings</h3>
+                </div>
+                <span id="repoSemanticBadge" class="soft-badge">Checking</span>
+              </div>
+              <p class="surface-copy">Jina code embeddings and LanceDB vectors for conceptual repository search.</p>
+              <div class="surface-footer">
+                <div id="semanticIndexedAt" class="subtle">Not indexed</div>
+                <button id="rebuildSemantic" class="primary-button">Refresh semantic index</button>
+              </div>
+            </article>
+
+            <article class="surface-card span-2">
+              <div class="surface-header">
+                <div>
+                  <div class="surface-kicker">Changed files</div>
+                  <h3>Working tree</h3>
+                </div>
+              </div>
+              <div id="changedFilesList" class="changed-files-list">
+                <div class="empty-list">No changed files.</div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="patchDrawerBackdrop" class="drawer-backdrop hidden"></div>
+    <aside id="patchDrawer" class="patch-drawer">
+      <div class="drawer-header">
+        <div>
+          <div id="drawerStatus" class="status-badge">Patch</div>
+          <h2 id="drawerTitle">Patch details</h2>
+          <div id="drawerMeta" class="drawer-meta"></div>
+        </div>
+        <button id="closeDrawer" class="icon-button" aria-label="Close patch">
+          <svg viewBox="0 0 20 20" fill="none"><path d="m6 6 8 8m0-8-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="drawer-body">
+        <section class="drawer-section">
+          <div class="drawer-section-title">Summary</div>
+          <p id="drawerSummary" class="drawer-summary"></p>
+        </section>
+
+        <section class="drawer-section">
+          <div class="drawer-section-title">Validation</div>
+          <div id="drawerValidation" class="validation-list"></div>
+        </section>
+
+        <section class="drawer-section">
+          <div class="drawer-section-title">Diff</div>
+          <div id="drawerDiff" class="diff-view"></div>
+        </section>
+      </div>
+      <div id="drawerActions" class="drawer-actions">
+        <button id="rejectPatch" class="danger-ghost">Reject</button>
+        <button id="reconcilePatch" class="secondary-button">Reconcile</button>
+        <button id="approvePatch" class="primary-button">Approve patch</button>
+      </div>
+    </aside>
+
+    <div id="settingsModal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div>
+            <div class="surface-kicker">Preferences</div>
+            <h2>Settings</h2>
+          </div>
+          <button id="closeSettings" class="icon-button">
+            <svg viewBox="0 0 20 20" fill="none"><path d="m6 6 8 8m0-8-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="form-stack">
+          <label>
+            <span>API base URL</span>
+            <input id="apiBaseInput" class="text-input" placeholder="Same origin" />
+            <small>Leave blank when the UI is served by the same FastAPI server.</small>
+          </label>
+          <label>
+            <span>Default maximum files</span>
+            <input id="maxFilesInput" class="text-input" type="number" min="1" max="10" value="3" />
+          </label>
+          <label>
+            <span>Patch history limit</span>
+            <input id="historyLimitInput" class="text-input" type="number" min="10" max="200" value="50" />
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button id="resetSettings" class="secondary-button">Reset</button>
+          <button id="saveSettings" class="primary-button">Save settings</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="addWorkspaceModal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div>
+            <div class="surface-kicker">New Codebase</div>
+            <h2>Add Workspace</h2>
+          </div>
+          <button id="closeAddWorkspace" class="icon-button" type="button" aria-label="Close dialog">
+            <svg viewBox="0 0 20 20" fill="none"><path d="m6 6 8 8m0-8-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <form id="addWorkspaceForm" class="form-stack">
+          <label>
+            <span>Workspace Name</span>
+            <input id="newWorkspaceName" class="text-input" placeholder="e.g. OutrightBOT, my-api, billing-service" required />
+            <small>A friendly display name for this codebase.</small>
+          </label>
+          <label>
+            <span>Codebase Folder Path</span>
+            <input id="newWorkspacePath" class="text-input" placeholder="e.g. C:/Users/name/projects/my-repo or /path/to/repo" required />
+            <small>Absolute local path to the directory on your system.</small>
+          </label>
+          <div class="checkbox-row">
+            <input id="newWorkspaceAutoScan" type="checkbox" checked />
+            <label for="newWorkspaceAutoScan">Scan files immediately after adding</label>
+          </div>
+          <div id="addWorkspaceError" class="modal-error hidden"></div>
+          <div class="modal-actions">
+            <button id="cancelAddWorkspace" type="button" class="secondary-button">Cancel</button>
+            <button id="submitAddWorkspace" type="submit" class="primary-button">
+              <span id="submitAddWorkspaceText">Add &amp; Switch Workspace</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+  </div>
+
+  <script src="/dashboard/app.js"></script>
+</body>
+</html>

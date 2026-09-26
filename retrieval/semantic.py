@@ -1,3 +1,5 @@
+import logging
+import time
 from datetime import (
     datetime,
     timezone,
@@ -38,9 +40,13 @@ from workspace.manager import (
 )
 
 
+logger = logging.getLogger("semantic")
+
+
 def build_semantic_index(
     workspace_id: str,
 ) -> SemanticBuildResult:
+    start_time = time.perf_counter()
 
     workspace = get_workspace(
         workspace_id
@@ -53,6 +59,7 @@ def build_semantic_index(
             f"{workspace_id}"
         )
 
+    logger.info(f"[{workspace_id}] Generating code chunks for workspace...")
     chunks = build_code_chunks(
         workspace_id
     )
@@ -63,6 +70,8 @@ def build_semantic_index(
             "No code chunks were "
             "generated."
         )
+
+    logger.info(f"[{workspace_id}] Extracted {len(chunks)} code chunks. Generating neural embeddings...")
 
     embedding_texts = [
         build_embedding_text(
@@ -207,6 +216,9 @@ def build_semantic_index(
     mark_semantic_index_current(
         workspace_id
     )
+
+    elapsed = time.perf_counter() - start_time
+    logger.info(f"[{workspace_id}] Successfully built semantic index for {len(chunks)} chunks in {elapsed:.1f}s.")
 
     return SemanticBuildResult(
         workspace_id=workspace.id,

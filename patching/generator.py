@@ -16,8 +16,14 @@ from workspace.manager import (
     WorkspaceError,
     get_workspace,
 )
+from patching.applier import (
+    resolve_symbol,
+)
 from storage.database import (
     get_database,
+)
+from retrieval.lexical import (
+    extract_search_terms,
 )
 
 
@@ -41,12 +47,25 @@ PATCH_SCHEMA = {
                     False,
 
                 "properties": {
+                    "operation": {
+                        "type": "string",
+                        "enum": [
+                            "replace_symbol",
+                            "insert_after_symbol",
+                            "insert_inside_symbol",
+                            "append_file",
+                        ],
+                    },
+
                     "file_path": {
                         "type": "string",
                     },
 
                     "target_symbol": {
-                        "type": "string",
+                        "type": [
+                            "string",
+                            "null",
+                        ],
                     },
 
                     "new_text": {
@@ -59,10 +78,10 @@ PATCH_SCHEMA = {
                 },
 
                 "required": [
+                    "operation",
                     "file_path",
                     "target_symbol",
                     "new_text",
-                    "reason",
                 ],
             },
         },
@@ -75,7 +94,7 @@ PATCH_SCHEMA = {
 }
 
 
-PATCH_SYSTEM_PROMPT = """
+PATCH_SYSTEM_PROMPT_BASE = """
 You are OutrightBot's patch generation engine.
 
 You are given a developer task and repository source
@@ -91,34 +110,87 @@ For every edit:
 
 2. target_symbol must be the EXACT indexed symbol
    name supplied in the context, preferably its
-   qualified name.
+   qualified name (except for append_file, where
+   target_symbol must be null).
 
    Example:
    PricingService.calculateOffer
 
-3. new_text must contain the COMPLETE replacement
-   source for that symbol.
+3. new_text must contain ONLY the complete replacement
+   source for that symbol, or the single new source
+   being inserted/appended.
 
 4. Preserve the language's indentation and syntax.
 
-5. Do not include markdown code fences.
+5. Do NOT include markdown code fences (e.g. ```php or ```).
+   Return raw code only.
 
-6. Do not create or delete files.
+6. Do NOT include language opening or closing tags like
+   <?php or ?>. Existing repository files already open
+   them. Inserting <?php inside a PHP file causes fatal
+   syntax errors.
 
-7. Prefer existing company helpers rather than
+7. Do not leave trailing whitespace on any line.
+
+8. Do not create or delete files.
+
+9. Prefer existing company helpers rather than
    duplicating functionality.
 
-8. Change only the smallest relevant symbol.
+10. Change only the smallest relevant symbol.
 
-9. Do not modify unrelated formatting.
+11. Do not modify unrelated formatting.
 
-10. Do not add dependencies unless explicitly asked.
+12. Do not add dependencies unless explicitly asked.
 
 Python will locate the original implementation from
 the repository index. Do NOT return old_text.
 
 Return JSON matching the requested schema.
 """.strip()
+
+PATCH_EDIT_RULES = """
+PATCH EDIT CONTRACT
+
+Every edit MUST use exactly one operation:
+
+1. replace_symbol
+   Use ONLY when modifying the internal logic of an EXISTING symbol.
+   target_symbol MUST be an EXISTING symbol from the symbol inventory.
+   new_text is ONLY the complete replacement code for that symbol.
+   NEVER use replace_symbol to add new sibling functions or methods!
+
+2. insert_after_symbol
+   Use when ADDING or CREATING a NEW sibling function, method, or class.
+   target_symbol MUST be an EXISTING symbol that the new code should be inserted after.
+   new_text is ONLY the single new function/method being added. Do NOT repeat target_symbol or surrounding code.
+
+3. insert_inside_symbol
+   Use when ADDING a NEW method/member inside an EXISTING class.
+   target_symbol MUST be the EXISTING class name.
+   new_text is ONLY the single new method/member being added inside the class. Do NOT repeat the class declaration.
+
+4. append_file
+   Use when adding new top-level code at the end of the file.
+   target_symbol MUST be null.
+   new_text is ONLY the new code to append to the end of the file.
+
+CRITICAL RULES FOR new_text AND target_symbol:
+- If the task asks to "add", "create", or "implement" a new function:
+  Do NOT use replace_symbol! Use insert_after_symbol (anchored to the relevant symbol) or append_file.
+- target_symbol is NEVER the name of newly-created code. Choose an EXISTING anchor from the symbol inventory.
+- new_text MUST contain ONLY the specific symbol being modified or added.
+- NEVER include surrounding, preceding, or subsequent functions in new_text.
+- NEVER echo or repeat unchanged code from the file.
+- NEVER include <?php or ?> tags. Files are already PHP files.
+- NEVER loop or repeat definitions. Once the target code is written, terminate the JSON string immediately.
+""".strip()
+
+PATCH_SYSTEM_PROMPT = (
+    PATCH_SYSTEM_PROMPT_BASE
+    + "\n\n"
+    + PATCH_EDIT_RULES
+)
 
 
 def _read_raw_range(
@@ -261,14 +333,20 @@ def _build_raw_patch_context(
 def _build_editable_symbols(
     workspace_id: str,
     context,
+    task: str = "",
 ) -> str:
-
     files = list(
         context.files_inspected
     )
 
     if not files:
         return ""
+
+    snippet_ranges_by_file = {}
+    for snippet in getattr(context, "snippets", []):
+        snippet_ranges_by_file.setdefault(snippet.file_path, []).append(
+            (snippet.start_line, snippet.end_line)
+        )
 
     placeholders = ",".join(
         "?"
@@ -291,6 +369,7 @@ def _build_editable_symbols(
           AND file_path IN (
               {placeholders}
           )
+          AND kind IN ('class', 'function', 'method', 'interface', 'trait')
 
         ORDER BY
             file_path,
@@ -307,25 +386,90 @@ def _build_editable_symbols(
             ),
         ).fetchall()
 
-    output = [
-        "EDITABLE INDEXED SYMBOLS:",
-    ]
+    if not rows:
+        return ""
+
+    task_terms = [t.lower() for t in extract_search_terms(task)] if task else []
+
+    relevant_symbols = []
+    other_symbols = []
 
     for row in rows:
+        fpath = row["file_path"]
+        s_start = row["start_line"]
+        s_end = row["end_line"]
+        name_lower = (row["name"] or "").lower()
+        qname_lower = (row["qualified_name"] or "").lower()
 
-        output.append(
-            (
-                f"- file={row['file_path']} "
-                f"symbol={row['qualified_name']} "
-                f"kind={row['kind']} "
-                f"lines={row['start_line']}-"
-                f"{row['end_line']} "
-                f"signature={row['signature']}"
-            )
+        ranges = snippet_ranges_by_file.get(fpath, [])
+        is_near_snippet = any(
+            (s_start <= r_end + 30 and s_end >= r_start - 30)
+            for r_start, r_end in ranges
+        )
+        matches_task_keyword = any(
+            len(term) >= 4 and (term in name_lower or term in qname_lower)
+            for term in task_terms
         )
 
-    return "\n".join(
-        output
+        if is_near_snippet or matches_task_keyword:
+            relevant_symbols.append(row)
+        else:
+            other_symbols.append(row)
+
+    # Sort relevant symbols so direct task term matches are at the very top
+    def _relevance_key(r):
+        nl = (r["name"] or "").lower()
+        ql = (r["qualified_name"] or "").lower()
+        match_count = sum(1 for t in task_terms if len(t) >= 4 and (t in nl or t in ql))
+        return -match_count
+
+    relevant_symbols.sort(key=_relevance_key)
+
+    sections = []
+    if relevant_symbols:
+        relevant_text = "\n".join(
+            (
+                f"- file={row['file_path']} "
+                f"name={row['qualified_name']} "
+                f"kind={row['kind']} "
+                f"lines={row['start_line']}-{row['end_line']} "
+                f"signature={(row['signature'] or '')[:100]}"
+            )
+            for row in relevant_symbols[:25]
+        )
+        sections.append(
+            "PRIMARY ANCHOR SYMBOLS (Most relevant to the retrieved code and task):\n"
+            + relevant_text
+        )
+
+    remaining_budget = max(0, 35 - len(relevant_symbols[:25]))
+    if other_symbols and remaining_budget > 0:
+        other_text = "\n".join(
+            (
+                f"- file={row['file_path']} "
+                f"name={row['qualified_name']} "
+                f"kind={row['kind']} "
+                f"lines={row['start_line']}-{row['end_line']} "
+                f"signature={(row['signature'] or '')[:100]}"
+            )
+            for row in other_symbols[:remaining_budget]
+        )
+        sections.append(
+            "OTHER SYMBOLS IN FILE(S):\n"
+            + other_text
+        )
+
+    symbol_inventory = "\n\n".join(sections)
+
+    return (
+        f"""
+EXACT EXISTING SYMBOL INVENTORY
+
+{symbol_inventory}
+
+For any operation except append_file,
+target_symbol MUST match one of the symbol names above.
+""".strip()
     )
 
 def generate_patch_plan(
@@ -385,6 +529,7 @@ def generate_patch_plan(
         _build_editable_symbols(
             workspace_id,
             context,
+            task=task,
         )
     )
     feedback_section = ""
@@ -430,23 +575,23 @@ def generate_patch_plan(
 
         schema=PATCH_SCHEMA,
 
-        max_tokens=600,
+        max_tokens=1500,
     )
 
     payload = response.data
 
-    edits = [
-        ProposedEdit(
-            **item
-        )
-
-        for item in (
-            payload.get(
-                "edits",
-                []
-            )
-        )
-    ]
+    edits = []
+    for item in payload.get("edits", []):
+        if not isinstance(item, dict):
+            continue
+        if "reason" not in item or item["reason"] is None:
+            item["reason"] = ""
+        try:
+            edits.append(ProposedEdit(**item))
+        except Exception as error:
+            raise RuntimeError(
+                f"Model proposed an invalid edit structure: {error}"
+            ) from error
 
     if not edits:
 
@@ -458,51 +603,6 @@ def generate_patch_plan(
     allowed_files = set(
         context.files_inspected
     )
-    with get_database() as database:
-
-        for edit in edits:
-
-            if (
-                edit.file_path
-                not in allowed_files
-            ):
-
-                raise RuntimeError(
-                    "Model attempted to edit "
-                    "a file that was not supplied "
-                    "as repository context: "
-                    f"{edit.file_path}"
-                )
-
-            row = database.execute(
-                """
-                SELECT qualified_name
-
-                FROM code_symbols
-
-                WHERE workspace_id = ?
-                AND file_path = ?
-                AND (
-                        qualified_name = ?
-                        OR name = ?
-                )
-                """,
-                (
-                    workspace_id,
-                    edit.file_path,
-                    edit.target_symbol,
-                    edit.target_symbol,
-                ),
-            ).fetchone()
-
-            if row is None:
-
-                raise RuntimeError(
-                    "Model selected an unknown "
-                    "target symbol: "
-                    f"{edit.target_symbol} "
-                    f"in {edit.file_path}"
-                )
 
     for edit in edits:
 
@@ -517,6 +617,44 @@ def generate_patch_plan(
                 "as repository context: "
                 f"{edit.file_path}"
             )
+
+        if edit.operation == "append_file":
+
+            if edit.target_symbol is not None:
+
+                raise RuntimeError(
+                    "append_file operation must "
+                    "have a null target_symbol, "
+                    f"got: {edit.target_symbol}"
+                )
+
+            # No symbol lookup needed: append_file
+            # targets the file itself, not a symbol.
+            continue
+
+        if edit.target_symbol is None:
+
+            raise RuntimeError(
+                "Operation "
+                f"'{edit.operation}' requires a "
+                "non-null target_symbol."
+            )
+
+        try:
+            resolved = resolve_symbol(
+                workspace_id=workspace_id,
+                file_path=edit.file_path,
+                target_symbol=edit.target_symbol,
+            )
+
+            # Normalize edit.target_symbol to canonical qualified_name
+            if resolved:
+                target_qname = resolved["qualified_name"] if "qualified_name" in resolved else None
+                if target_qname:
+                    edit.target_symbol = target_qname
+
+        except Exception as error:
+            raise RuntimeError(str(error)) from error
 
     return (
         payload.get(
