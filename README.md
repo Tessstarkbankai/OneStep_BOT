@@ -1,19 +1,19 @@
-# ⚡ RepoRev (Code Intelligence)
+# RepoRev (Code Intelligence)
 
 > **Your codebase. Your machine. Your AI.**  
 > A 100% private, on-device AI assistant that understands your entire software repository through AST structural call graphs and semantic vector search.
 
 ---
 
-## 🌟 Why RepoRev?
+## Why RepoRev?
 
 Most AI coding tools upload your proprietary source code to cloud servers or rely on simple keyword matching that loses context in complex projects.
 
 **RepoRev runs completely on your local machine:**
-- 🔒 **Zero Data Leakage:** Your code, embeddings, and chat history never leave your computer.
-- 🧠 **Dual-Engine Code Understanding:** Combines Abstract Syntax Tree (AST) call graphs with vector embeddings so the AI understands real function flows, not just isolated snippets.
-- 🛠️ **Autonomous Safe Patches:** Plans, creates, and validates reviewable Git diffs with automated syntax checks before touching your files.
-- 🎨 **Modern Bolt-Inspired UI:** Sleek, high-performance dark glassmorphism interface with real-time telemetry.
+-  **Zero Data Leakage:** Your code, embeddings, and chat history never leave your computer.
+- **Dual-Engine Code Understanding:** Combines Abstract Syntax Tree (AST) call graphs with vector embeddings so the AI understands real function flows, not just isolated snippets.
+-  **Autonomous Safe Patches:** Plans, creates, and validates reviewable Git diffs with automated syntax checks before touching your files.
+-  **Modern Bolt-Inspired UI:** Sleek, high-performance dark glassmorphism interface with real-time telemetry.
 
 ---
 
